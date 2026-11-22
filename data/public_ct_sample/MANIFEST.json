@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0.0",
+  "generated_utc": "2026-11-22T10:54:21.362289+00:00",
+  "staging_source": "installed_pydicom_wheel",
+  "upstream_repository": "https://github.com/pydicom/pydicom",
+  "upstream_license": "MIT",
+  "files": [
+    {
+      "filename": "CT_small.dcm",
+      "bytes": 39206,
+      "sha256": "3dd31e5cc835b3f2cdd46c9da1982f59251e78518fefa8163d914631c66437d6",
+      "upstream_url": "https://raw.githubusercontent.com/pydicom/pydicom/main/src/pydicom/data/test_files/CT_small.dcm",
+      "dicom_summary": {
+        "shape": [
+          128,
+          128
+        ],
+        "pixel_spacing_mm": [
+          0.661468,
+          0.661468
+        ],
+        "slice_thickness_mm": 5.0,
+        "kvp": 120.0,
+        "manufacturer": "GE MEDICAL SYSTEMS",
+        "hu_min": -896.0,
+        "hu_max": 1167.0,
+        "aapm_tg220_d_w_cm": 8.7176,
+        "aapm_tg220_d_eff_cm": 8.4579
+      }
+    },
+    {
+      "filename": "LICENSE",
+      "bytes": 3141,
+      "sha256": "39b3259cb15151df25167119087df1fef33624765e639af42447ba6fe86dada3",
+      "upstream_url": "https://raw.githubusercontent.com/pydicom/pydicom/main/LICENSE"
+    },
+    {
+      "filename": "ATTRIBUTION.md",
+      "bytes": 1442,
+      "sha256": "5cb9469dee1ae4aa3728bfd37be26158aabccd4206b558242ae5cb762d46550a"
+    }
+  ]
+}

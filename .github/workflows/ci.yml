@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Sync dependencies (Python ${{ matrix.python-version }})
+        run: uv sync --extra dev --python ${{ matrix.python-version }}
+
+      - name: Lint with ruff
+        run: uv run --python ${{ matrix.python-version }} ruff check src tests scripts
+
+      - name: Run pytest with strict warnings and coverage
+        run: |
+          uv run --python ${{ matrix.python-version }} pytest \
+            --cov=radpareto_engine \
+            --cov-report=term-missing \
+            --cov-fail-under=75
+
+      - name: Run independent physics & provenance audit
+        run: uv run --python ${{ matrix.python-version }} python scripts/run_independent_audit.py

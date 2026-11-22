@@ -1,0 +1,107 @@
+{
+  "engine_version": "0.1.0",
+  "audit_timestamp_utc": "2026-11-22T11:13:05.816375+00:00",
+  "all_passed": true,
+  "passed_count": 10,
+  "total_checks": 10,
+  "checks": [
+    {
+      "check": "public_mit_dicom_integrity",
+      "passed": true,
+      "evidence": {
+        "upstream_license": "MIT",
+        "checksums_verified": true,
+        "d_w_cm": 8.7176
+      }
+    },
+    {
+      "check": "parseval_theorem_exactness",
+      "passed": true,
+      "evidence": {
+        "parseval_relative_error": 0.0
+      }
+    },
+    {
+      "check": "dprime_closed_form_scaling",
+      "passed": true,
+      "evidence": {
+        "contrast_2x_rel_err": 0.0,
+        "nps_4x_rel_err": 0.0
+      }
+    },
+    {
+      "check": "aapm_ssde_exact_formulas",
+      "passed": true,
+      "evidence": {
+        "max_abs_err": 0.0
+      }
+    },
+    {
+      "check": "pareto_dominance_and_inverse_solve",
+      "passed": true,
+      "evidence": {
+        "n_pareto": 5,
+        "non_dominated": true,
+        "inverse_d_prime_err": 8.881784197001252e-16
+      }
+    },
+    {
+      "check": "all_five_abstention_gates_verified",
+      "passed": true,
+      "evidence": {
+        "expected": [
+          "MISSING_RDSR_CALIBRATION",
+          "PARSEVAL_NPS_VIOLATION",
+          "PSD_SENTINEL_THRESHOLD_EXCEEDED",
+          "TUBE_CURRENT_SATURATION",
+          "UNPHYSICAL_CONTRAST_SNR"
+        ],
+        "fired": [
+          "MISSING_RDSR_CALIBRATION",
+          "PARSEVAL_NPS_VIOLATION",
+          "PSD_SENTINEL_THRESHOLD_EXCEEDED",
+          "TUBE_CURRENT_SATURATION",
+          "UNPHYSICAL_CONTRAST_SNR"
+        ]
+      }
+    },
+    {
+      "check": "sobol_ishigami_accuracy",
+      "passed": true,
+      "evidence": {
+        "max_abs_err": 0.01241712462908412
+      }
+    },
+    {
+      "check": "dicom_rdsr_round_trip",
+      "passed": true,
+      "evidence": {
+        "n_events": 6,
+        "calibration_verified": true
+      }
+    },
+    {
+      "check": "fleet_critic_gate_and_mcp_server",
+      "passed": true,
+      "evidence": {
+        "critic_approved": "6/6",
+        "mean_ctdi_reduction_pct": 41.48,
+        "mcp_tool_count": 6
+      }
+    },
+    {
+      "check": "all_six_publication_figures_present",
+      "passed": true,
+      "evidence": {
+        "figure_stems": [
+          "fig1_tg233_phantom_metrology",
+          "fig2_dose_detectability_pareto",
+          "fig3_fluoro_3d_psd_map",
+          "fig4_fleet_protocol_drift_audit",
+          "fig5_sobol_uncertainty_phase",
+          "fig6_cohort_validation_calibration"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,179 @@
+# `radpareto-engine`
+
+**Closed-Loop AAPM TG-233 Task-Based Image Quality × Organ & Peak-Skin-Dose Pareto Protocol Optimization Engine with Frontier Agent Harness & MCP Server**
+
+[![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-0072B2?style=flat-square)](https://www.python.org/)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-009E73?style=flat-square)](LICENSE)
+[![Research Software](https://img.shields.io/badge/status-Research%20Software%20%E2%80%94%20NOT%20A%20MEDICAL%20DEVICE-D55E00?style=flat-square)](NOTICE)
+[![Standards: AAPM TG-233 / TG-204 / TG-220 / TG-293](https://img.shields.io/badge/standards-AAPM%20TG--233%20%7C%20TG--204%2F220%2F293%20%7C%20NCRP%20168%20%7C%20ICRP%20120-56B4E9?style=flat-square)](DATA_SOURCES_AND_CITATIONS.md)
+[![MCP: JSON-RPC 2.0](https://img.shields.io/badge/MCP-6%20Typed%20Tools%20(stdio)-E69F00?style=flat-square)](src/radpareto_engine/harness/mcp_server.py)
+[![Audit: 10/10 Pass](https://img.shields.io/badge/independent%20audit-10%2F10%20PASS-009E73?style=flat-square)](docs/AUDIT_REPORT.md)
+
+> **RESEARCH SOFTWARE NOTICE — NOT A MEDICAL DEVICE.** `radpareto-engine` is provided exclusively for medical physics research, algorithm benchmarking, and phantom metrology education under the Apache-2.0 License. It has **not** been cleared or approved by the FDA, EU MDR, or any regulatory authority, and **must not** be used for clinical diagnosis, automated scanner exposure control, or unverified clinical dose reporting without Qualified Medical Physicist (QMP) commissioning.
+
+---
+
+## Why `radpareto-engine`?
+
+Consumer AI chat interfaces cannot ingest binary DICOM phantoms or DICOM Radiation Dose Structured Reports (RDSR), verify discrete Parseval noise-power conservation, ray-cast multi-angle C-arm fluoroscopy beams onto 3D patient entrance skin, or enforce real X-ray tube current/power/heat saturation ceilings while solving exact inverse Dose–Detectability frontiers.
+
+`radpareto-engine` solves this end-to-end with strictly typed **Pydantic v2** Physics IR, **cryptographic SHA-256 provenance**, **5 hard `AbstentionCode` safety gates**, an autonomous **Critic-Verifier Agent Harness**, and a zero-bloat **JSON-RPC 2.0 stdio MCP server**.
+
+---
+
+## System Architecture
+
+```mermaid
+flowchart TD
+    A["DICOM CT / Phantom & RDSR Input (pydicom)"] --> B["AAPM TG-233 Metrology Kernel (TTF, 2D/3D NPS, Parseval, NPWE & CHO d')"]
+    A --> C["Dosimetry & RDSR Engine (TG-204/220/293 SSDE, ATCM, 3D Fluoro PSD)"]
+    B --> D["Multi-Vendor Pareto & Inverse d' Solver (Siemens / GE / Philips / Canon)"]
+    C --> D
+    E["X-Ray Tube Hardware Limits (mA, kW, MHU, Sn-Filter)"] --> D
+    D --> F["Hard Abstention & Provenance Layer (SHA-256 + 5 AbstentionCode Gates)"]
+    D --> G["Saltelli-Jansen QMC Sobol' UQ (S_1, S_T, 95% CI)"]
+    F --> H["Frontier Agent Orchestrator & Independent Critic-Verifier Gate"]
+    G --> H
+    H --> I["ACR / AAPM TG-233 Physics Audit Dossier (Markdown + JSON)"]
+    H --> J["JSON-RPC 2.0 Stdio MCP Server (6 Provenance-Gated Tools)"]
+```
+
+---
+
+## Verified Benchmark & Independent Audit Dashboard
+
+All metrics below are deterministically reproduced by `scripts/run_benchmarks_and_figures.py` and independently verified by `scripts/run_independent_audit.py` (see [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md)).
+
+| Benchmark / Verification Domain | Metric | Verified Result | Reference / Gate |
+|---|---|---|---|
+| **AAPM TG-233 Parseval Invariant** | Max discrete 2D NPS integral vs. variance error ($n=12$) | **`2.93e-16`** | Tolerance `< 0.02` (`PARSEVAL_NPS_VIOLATION`) |
+| **Closed-Form $d'$ Scaling** | Max error for $d'(2C)=2d'(C)$ and $d'(4\cdot\mathrm{NPS})=0.5\,d'$ | **`2.02e-16`** | Exact quantum-limited NPWE identity |
+| **Nonlinear IR Resolution Shift** | MBIR $f_{50}$ High (+500 HU) vs. Low (+45 HU) contrast | **`0.42 → 0.34 mm⁻¹`** | AAPM TG-233 contrast-dependent TTF |
+| **Iodine CTA Spectral Pareto** | 2 mm vessel ($d'=6.0$, $D_w=27\text{ cm}$): `80 kVp DLR` vs `140 kVp FBP` | **`1.71 vs. 18.20 mGy`** | `-90.6%` exact inverse CTDIvol solve |
+| **3D Fluoroscopy PSD (RDSR)** | 6-event CTO-PCI RDSR round-trip Peak Skin Dose | **`6.22 Gy`** (`53 cm² > 5 Gy`) | NCRP 168 / ICRP 120 `FOLLOWUP_5GY` tier |
+| **Multi-Vendor Fleet Drift Audit** | 6-scanner fleet (Siemens, GE, Philips, Canon) | **`-41.5%` mean CTDIvol** | Compliance `3/6 → 6/6`; **6/6 Critic-Verifier APPROVED** |
+| **Saltelli–Jansen Sobol' UQ** | Analytical Ishigami accuracy ($N_{\text{base}}=1024$) | **Max err `0.0124`** | Saltelli 2010 / Jansen 1999 QMC |
+| **Public Open-License CT Sample** | `data/public_ct_sample/CT_small.dcm` (MIT) | **$D_w = 8.72\text{ cm}$** | SHA-256 verified against `MANIFEST.json` |
+| **Hard Safety Abstention Gates** | Adversarial trigger suite across all 5 `AbstentionCode`s | **`5 / 5` FIRED** | Zero silent bypasses |
+
+---
+
+## Publication-Grade Visuals (300-DPI PNG & Vector PDF)
+
+All 6 figures follow *Medical Physics* / *Radiology* styling with the colorblind-safe Okabe–Ito palette, physical scalebars, bold panel labels, and cryptographic SHA-256 provenance footers.
+
+### 1. AAPM TG-233 Nonlinear Phantom Metrology (TTF, 2D/1D NPS, NPWE & CHO $d'$)
+![TG-233 Phantom Metrology](figures/fig1_tg233_phantom_metrology.png)
+
+### 2. Habitus-Stratified Dose–Detectability Pareto Frontiers & Tube Saturation Boundary
+![Dose-Detectability Pareto](figures/fig2_dose_detectability_pareto.png)
+
+### 3. 3D Patient-Surface Fluoroscopy Peak Skin Dose (PSD) Map from DICOM RDSR
+![Fluoroscopy 3D PSD Map](figures/fig3_fluoro_3d_psd_map.png)
+
+### 4. Autonomous Multi-Vendor Fleet Protocol Drift Audit & Critic-Verifier Gate
+![Fleet Protocol Drift Audit](figures/fig4_fleet_protocol_drift_audit.png)
+
+### 5. Saltelli–Jansen Global Sobol' Sensitivity & 2D ($D_w \times \text{CTDI}_{\text{vol}}$) Phase Diagram
+![Sobol Sensitivity & Phase Diagram](figures/fig5_sobol_uncertainty_phase.png)
+
+### 6. Public Open-License CT Calibration, Multi-Habitus SSDE & Formal Invariant Verification
+![Cohort Validation & Calibration](figures/fig6_cohort_validation_calibration.png)
+
+---
+
+## Quickstart (`uv` + Python 3.12)
+
+```bash
+# 1. Install package and dev tools with uv
+uv sync --extra dev --python 3.12
+
+# 2. Verify public MIT CT sample + SHA-256 manifest
+uv run python scripts/fetch_public_ct_sample.py
+
+# 3. Run full test suite (strict warnings as errors) & lint
+uv run pytest --cov=radpareto_engine --cov-report=term-missing
+uv run ruff check src tests scripts
+
+# 4. Reproduce all 6 publication figures & fleet audit dossier
+uv run python scripts/run_benchmarks_and_figures.py
+
+# 5. Run independent 10-check physics & provenance audit
+uv run python scripts/run_independent_audit.py
+```
+
+---
+
+## Collapsible Workflows (Python API & MCP Server)
+
+<details>
+<summary><strong>Python API: Exact Inverse Minimum-Dose Solve & Multi-Vendor Fleet Audit</strong></summary>
+
+```python
+from radpareto_engine.ir import ClinicalTaskSpec, CTProtocolSpec, CTVendor, ReconMode
+from radpareto_engine.pareto_optimizer import invert_min_dose_for_dprime
+from radpareto_engine.harness.agent_orchestrator import audit_and_optimize_protocol_fleet
+
+protocol = CTProtocolSpec(
+    protocol_id="ABD-HYBRID-IR",
+    scanner_name="Siemens SOMATOM Force",
+    vendor=CTVendor.SIEMENS,
+    kvp=100.0,
+    slice_thickness_mm=3.0,
+    recon_mode=ReconMode.HYBRID_IR,
+    ir_strength=0.6,
+)
+task = ClinicalTaskSpec(
+    name="5mm_low_contrast_liver_lesion",
+    diameter_mm=5.0,
+    contrast_hu=25.0,
+    d_prime_target=3.0,
+)
+
+# Exact minimum CTDIvol required to guarantee d' >= 3.0 at D_w = 31 cm
+sol = invert_min_dose_for_dprime(protocol=protocol, d_w_cm=31.0, task=task)
+print(f"Min CTDIvol = {sol.min_ctdi_vol_mgy:.2f} mGy | SSDE = {sol.min_ssde_mgy:.2f} mGy | d' = {sol.achieved_d_prime:.2f}")
+
+# Autonomous multi-vendor fleet audit + Critic-Verifier Gate
+dossier = audit_and_optimize_protocol_fleet()
+print(f"Critic approved: {dossier.critic_approved_count}/{dossier.total_protocols} | Mean CTDI delta: {-dossier.fleet_mean_ctdi_reduction_pct:+.1f}%")
+```
+
+</details>
+
+<details>
+<summary><strong>MCP Server (JSON-RPC 2.0 stdio): 6 Provenance-Gated Physics Tools</strong></summary>
+
+Start the zero-bloat stdio MCP server:
+
+```bash
+uv run radpareto-mcp
+```
+
+Exposed tools (`tools/list`):
+1. `radpareto_measure_tg233` — Circular-edge TTF, 2D/3D Parseval-verified NPS, NPWE & CHO $d'$.
+2. `radpareto_compute_ssde_and_psd` — AAPM TG-204/220/293 SSDE + calibrated 3D fluoroscopy PSD.
+3. `radpareto_solve_pareto_frontier` — Hardware-constrained CT Dose–Detectability Pareto frontier.
+4. `radpareto_invert_min_dose_for_dprime` — Exact Brent inverse solve for minimum $\text{CTDI}_{\text{vol}}$ guaranteeing $d' \ge d'_{\text{target}}$.
+5. `radpareto_audit_protocol_fleet` — Multi-vendor drift audit + Critic-Verifier Gate dossier.
+6. `radpareto_run_sobol_sensitivity` — Saltelli–Jansen QMC global Sobol' sensitivity ($S_1, S_T, 95\%\text{ CI}$).
+
+Example JSON-RPC 2.0 call:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"radpareto_invert_min_dose_for_dprime","arguments":{"d_w_cm":30.0,"d_prime_target":3.0,"kvp":120,"recon_mode":"hybrid_ir","ir_strength":0.6}}}
+```
+
+Hard safety violations (e.g., uncalibrated RDSR or tube saturation) return structured MCP responses with `"isError": true` and machine-readable `"abstention_code"`.
+
+</details>
+
+---
+
+## Documentation, Citations & License
+
+- **Technical Specification:** [`docs/ENGINE_SPECIFICATION.md`](docs/ENGINE_SPECIFICATION.md)
+- **Independent Audit Report:** [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md)
+- **Data Sources, Verified DOIs & BibTeX:** [`DATA_SOURCES_AND_CITATIONS.md`](DATA_SOURCES_AND_CITATIONS.md)
+- **Citation Metadata:** [`CITATION.cff`](CITATION.cff)
+- **License & Research Notice:** [`LICENSE`](LICENSE) (Apache-2.0) and [`NOTICE`](NOTICE)

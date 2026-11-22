@@ -1,0 +1,107 @@
+cff-version: 1.2.0
+title: "radpareto-engine: Closed-Loop AAPM TG-233 Task-Based Image Quality x Organ & Peak-Skin-Dose Pareto Protocol Optimization Engine"
+message: "If you use this software in research or benchmarks, please cite it using the metadata below."
+type: software
+authors:
+  - name: "RadPareto Engine Contributors"
+license: Apache-2.0
+version: "0.1.0"
+date-released: "2026-11-22"
+keywords:
+  - medical physics
+  - computed tomography
+  - fluoroscopy
+  - AAPM TG-233
+  - SSDE
+  - peak skin dose
+  - DICOM RDSR
+  - Pareto optimization
+  - Sobol sensitivity
+  - Model Context Protocol
+references:
+  - type: article
+    title: "Performance evaluation of computed tomography systems: Summary of AAPM Task Group 233"
+    authors:
+      - family-names: Samei
+        given-names: Ehsan
+      - family-names: Bakalyar
+        given-names: Donovan
+      - family-names: Boedeker
+        given-names: Kirsten L.
+      - family-names: Brady
+        given-names: Samuel
+      - family-names: Fan
+        given-names: Jiahua
+      - family-names: Leng
+        given-names: Shuai
+      - family-names: Myers
+        given-names: Kyle J.
+      - family-names: Popescu
+        given-names: Lucretiu M.
+      - family-names: Ramirez Giraldo
+        given-names: Juan Carlos
+      - family-names: Ranallo
+        given-names: Frank
+      - family-names: Solomon
+        given-names: Justin
+      - family-names: Vaishnav
+        given-names: Jay
+      - family-names: Wang
+        given-names: Jia
+    journal: "Medical Physics"
+    volume: 46
+    issue: 11
+    start: "e735"
+    end: "e756"
+    year: 2019
+    doi: "10.1002/mp.13763"
+  - type: article
+    title: "Low-dose CT image and projection dataset"
+    authors:
+      - family-names: Moen
+        given-names: Taylor R.
+      - family-names: Chen
+        given-names: Baiyu
+      - family-names: Holmes III
+        given-names: David R.
+      - family-names: Duan
+        given-names: Xinhui
+      - family-names: Yu
+        given-names: Zhicong
+      - family-names: Yu
+        given-names: Lifeng
+      - family-names: Leng
+        given-names: Shuai
+      - family-names: Fletcher
+        given-names: Joel G.
+      - family-names: McCollough
+        given-names: Cynthia H.
+    journal: "Medical Physics"
+    volume: 48
+    issue: 2
+    start: 902
+    end: 911
+    year: 2021
+    doi: "10.1002/mp.14782"
+  - type: article
+    title: "Variance based sensitivity analysis of model output. Design and estimator for the total sensitivity index"
+    authors:
+      - family-names: Saltelli
+        given-names: Andrea
+      - family-names: Annoni
+        given-names: Paola
+      - family-names: Azzini
+        given-names: Ivano
+      - family-names: Campolongo
+        given-names: Francesca
+      - family-names: Ratto
+        given-names: Marco
+      - family-names: Tarantola
+        given-names: Stefano
+    journal: "Computer Physics Communications"
+    volume: 181
+    issue: 2
+    start: 259
+    end: 270
+    year: 2010
+    doi: "10.1016/j.cpc.2009.09.018"

@@ -1,0 +1,17 @@
+radpareto-engine
+Copyright 2026 RadPareto Engine Contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+RESEARCH SOFTWARE — NOT A MEDICAL DEVICE
+----------------------------------------
+This software is intended solely for medical physics research, education,
+methodological benchmarking, and offline phantom analysis. It is NOT a
+regulated medical device (FDA / EU MDR / Health Canada) and MUST NOT be used
+for clinical diagnosis, automated patient exposure control, or unverified
+clinical dose reporting.
+
+Third-Party Data Attribution:
+- Public CT DICOM test sample (CT_small.dcm) originates from the pydicom
+  project (MIT License); see data/public_ct_sample/ATTRIBUTION.md and
+  data/public_ct_sample/LICENSE for verbatim upstream terms.

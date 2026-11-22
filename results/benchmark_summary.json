@@ -1,0 +1,246 @@
+{
+  "engine_version": "0.1.0",
+  "fig1_tg233_metrology": {
+    "ttf_fbp_f50": 0.48103349668332374,
+    "ttf_mbir_hi_f50": 0.4216964729843205,
+    "ttf_mbir_lo_f50": 0.3387149627375015,
+    "nps_fbp_f_peak": 0.42500000000000004,
+    "nps_mbir_f_peak": 0.275,
+    "parseval_rel_err": 1.223413326875576e-16,
+    "d_prime_npwe_hir": 6.805184333342536,
+    "d_prime_cho_hir": 19.970225452387574
+  },
+  "fig2_pareto_frontier": {
+    "frontiers": {
+      "dw_22": {
+        "n_pareto": 15,
+        "n_saturated": 65,
+        "max_d_prime": 13.192
+      },
+      "dw_29": {
+        "n_pareto": 18,
+        "n_saturated": 160,
+        "max_d_prime": 10.134
+      },
+      "dw_36": {
+        "n_pareto": 18,
+        "n_saturated": 180,
+        "max_d_prime": 5.459
+      }
+    },
+    "cta_80kvp_dlr_min_ctdi": 1.7149967896591531,
+    "cta_140kvp_fbp_min_ctdi": 18.200560566274653
+  },
+  "fig3_fluoro_psd": {
+    "peak_skin_dose_gy": 6.219790288493755,
+    "cumulative_air_kerma_gy": 6.84,
+    "area_above_2gy_cm2": 150.27232125981504,
+    "area_above_3gy_cm2": 119.38900419814598,
+    "area_above_5gy_cm2": 52.7845786158238,
+    "clinical_tier": "FOLLOWUP_5GY"
+  },
+  "fig4_fleet_audit": {
+    "total_protocols": 6,
+    "baseline_compliant": 3,
+    "optimized_compliant": 6,
+    "critic_approved": 6,
+    "mean_ctdi_reduction_pct": 41.48060587259966,
+    "mean_ssde_reduction_pct": 41.48060587259966
+  },
+  "fig5_sobol_uq": {
+    "sobol_ct": {
+      "output_name": "d_prime_npwe",
+      "parameter_names": [
+        "D_w",
+        "kVp",
+        "IR_strength",
+        "CTDIvol",
+        "Contrast"
+      ],
+      "s1": {
+        "D_w": 0.43199920748042103,
+        "kVp": -0.0018774751333644865,
+        "IR_strength": 0.005106301944457582,
+        "CTDIvol": 0.20052803979689773,
+        "Contrast": 0.29975758409067965
+      },
+      "st": {
+        "D_w": 0.47770144764357175,
+        "kVp": 0.004542713962059213,
+        "IR_strength": 0.003927444284099122,
+        "CTDIvol": 0.2225834600304577,
+        "Contrast": 0.34766142525915067
+      },
+      "interactions": {
+        "D_w": 0.04570224016315072,
+        "kVp": 0.0064201890954237,
+        "IR_strength": -0.00117885766035846,
+        "CTDIvol": 0.02205542023355997,
+        "Contrast": 0.04790384116847102
+      },
+      "s1_ci95": {
+        "D_w": [
+          0.1351413359330158,
+          0.7391332588772728
+        ],
+        "kVp": [
+          -0.032708766171641826,
+          0.03185088580846909
+        ],
+        "IR_strength": [
+          -0.027299932070980804,
+          0.029932492934802483
+        ],
+        "CTDIvol": [
+          -0.006049985520056361,
+          0.42717991045791726
+        ],
+        "Contrast": [
+          0.05487951261779285,
+          0.5792558665267119
+        ]
+      },
+      "st_ci95": {
+        "D_w": [
+          0.4078324246911834,
+          0.5681376402001869
+        ],
+        "kVp": [
+          0.0032727234678834724,
+          0.00612485159623949
+        ],
+        "IR_strength": [
+          0.0030928239635802397,
+          0.0047926989638712525
+        ],
+        "CTDIvol": [
+          0.18122503076714663,
+          0.26918195722323385
+        ],
+        "Contrast": [
+          0.2825173339349452,
+          0.43617548045984766
+        ]
+      },
+      "n_base_samples": 256,
+      "total_evaluations": 1792,
+      "output_mean": 4.151420375416997,
+      "output_std": 1.7598729419050214,
+      "provenance": {
+        "schema_version": "1.0.0",
+        "engine_version": "0.1.0",
+        "artifact_kind": "sobol_uq",
+        "input_sha256": "f334ce81039cd1b6d5802150e9770eb5c40e656f786d96873e9db28d5e993bf6",
+        "output_sha256": "fd95648226e1459b8ecf51d871a270b846e7c7c975b864f021690afe68038d85",
+        "timestamp_utc": "2026-11-22T11:07:38.569894+00:00",
+        "standards_referenced": [
+          "Saltelli et al., Comput Phys Commun 2010;181(2):259-270 (DOI:10.1016/j.cpc.2009.09.018)",
+          "Jansen, Comput Phys Commun 1999;117(1-2):35-43 (DOI:10.1016/S0010-4655(98)00154-4)"
+        ],
+        "calibration_verified": true,
+        "warnings": [],
+        "metadata": {}
+      }
+    },
+    "sobol_fluoro": {
+      "output_name": "peak_skin_dose_mgy",
+      "parameter_names": [
+        "Table_Transmission",
+        "Backscatter_Factor",
+        "Table_Height_mm",
+        "Beam_Area_cm2",
+        "Ref_Air_Kerma_mGy"
+      ],
+      "s1": {
+        "Table_Transmission": 0.15020473906826434,
+        "Backscatter_Factor": 0.039559717570763556,
+        "Table_Height_mm": 0.18125107477593075,
+        "Beam_Area_cm2": -0.0005465612053085659,
+        "Ref_Air_Kerma_mGy": 0.6064674027768499
+      },
+      "st": {
+        "Table_Transmission": 0.1401411954385613,
+        "Backscatter_Factor": 0.040666338807818045,
+        "Table_Height_mm": 0.19227504755837474,
+        "Beam_Area_cm2": 1.971733513219458e-06,
+        "Ref_Air_Kerma_mGy": 0.6223799476134838
+      },
+      "interactions": {
+        "Table_Transmission": -0.010063543629703048,
+        "Backscatter_Factor": 0.0011066212370544892,
+        "Table_Height_mm": 0.011023972782443991,
+        "Beam_Area_cm2": 0.0005485329388217854,
+        "Ref_Air_Kerma_mGy": 0.015912544836633957
+      },
+      "s1_ci95": {
+        "Table_Transmission": [
+          -0.2551735335634159,
+          0.5275836786264485
+        ],
+        "Backscatter_Factor": [
+          -0.1791672483281921,
+          0.24866854209271652
+        ],
+        "Table_Height_mm": [
+          -0.2276325749021231,
+          0.5954345287809729
+        ],
+        "Beam_Area_cm2": [
+          -0.002170022142385718,
+          0.0005140826092331028
+        ],
+        "Ref_Air_Kerma_mGy": [
+          -0.15569909995909426,
+          1.495803093373422
+        ]
+      },
+      "st_ci95": {
+        "Table_Transmission": [
+          0.10365378235030423,
+          0.1816383770576206
+        ],
+        "Backscatter_Factor": [
+          0.031461500540077285,
+          0.05541589415269928
+        ],
+        "Table_Height_mm": [
+          0.1516656362381343,
+          0.24670632727800917
+        ],
+        "Beam_Area_cm2": [
+          7.189424573935525e-07,
+          3.7795232798045147e-06
+        ],
+        "Ref_Air_Kerma_mGy": [
+          0.46822455629785753,
+          0.7795130203906734
+        ]
+      },
+      "n_base_samples": 128,
+      "total_evaluations": 896,
+      "output_mean": 2674.2866727067294,
+      "output_std": 656.9231127762896,
+      "provenance": {
+        "schema_version": "1.0.0",
+        "engine_version": "0.1.0",
+        "artifact_kind": "sobol_uq",
+        "input_sha256": "a595574c98442dd53754d5ba24b618966d63c96d33f677914169a269be431b37",
+        "output_sha256": "b1a9032f4f8f5629b53b6afc1deedc2db781afb31b67aa4d43cad28e8c1f7cf4",
+        "timestamp_utc": "2026-11-22T11:07:38.762060+00:00",
+        "standards_referenced": [
+          "Saltelli et al., Comput Phys Commun 2010;181(2):259-270 (DOI:10.1016/j.cpc.2009.09.018)",
+          "Jansen, Comput Phys Commun 1999;117(1-2):35-43 (DOI:10.1016/S0010-4655(98)00154-4)"
+        ],
+        "calibration_verified": true,
+        "warnings": [],
+        "metadata": {}
+      }
+    }
+  },
+  "fig6_validation": {
+    "public_ct_d_w_cm": 8.717618172679968,
+    "public_ct_d_eff_cm": 8.457915099054189,
+    "max_parseval_rel_err": 2.9337844824818806e-16,
+    "max_dprime_scaling_rel_err": 2.0182764772568117e-16
+  }
+}
