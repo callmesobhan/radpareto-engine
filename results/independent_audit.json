@@ -1,9 +1,9 @@
 {
-  "engine_version": "0.1.0",
-  "audit_timestamp_utc": "2026-11-22T11:13:05.816375+00:00",
+  "engine_version": "0.2.0",
+  "audit_timestamp_utc": "2026-11-22T11:40:01.284530+00:00",
   "all_passed": true,
-  "passed_count": 10,
-  "total_checks": 10,
+  "passed_count": 14,
+  "total_checks": 14,
   "checks": [
     {
       "check": "public_mit_dicom_integrity",
@@ -86,11 +86,11 @@
       "evidence": {
         "critic_approved": "6/6",
         "mean_ctdi_reduction_pct": 41.48,
-        "mcp_tool_count": 6
+        "mcp_tool_count": 8
       }
     },
     {
-      "check": "all_six_publication_figures_present",
+      "check": "all_eight_publication_figures_present",
       "passed": true,
       "evidence": {
         "figure_stems": [
@@ -99,8 +99,42 @@
           "fig3_fluoro_3d_psd_map",
           "fig4_fleet_protocol_drift_audit",
           "fig5_sobol_uncertainty_phase",
-          "fig6_cohort_validation_calibration"
+          "fig6_cohort_validation_calibration",
+          "fig7_multitask_vmi_calibration",
+          "fig8_qa_cusum_multiprocedure_psd"
         ]
+      }
+    },
+    {
+      "check": "volumetric_3d_nps_parseval",
+      "passed": true,
+      "evidence": {
+        "parseval_3d_relative_error": 0.0
+      }
+    },
+    {
+      "check": "empirical_scanner_calibration_fit",
+      "passed": true,
+      "evidence": {
+        "r2_noise_fit": 1.0,
+        "r2_f50_fit": 0.9925
+      }
+    },
+    {
+      "check": "multitask_pcct_vmi_and_longitudinal_atcm",
+      "passed": true,
+      "evidence": {
+        "best_multitask_ctdi_mgy": 5.0,
+        "atcm_optimal_strength": 1.0,
+        "atcm_dlp_mgy_cm": 443.89
+      }
+    },
+    {
+      "check": "longitudinal_qa_cusum_and_multiprocedure_psd",
+      "passed": true,
+      "evidence": {
+        "qa_drift_detected": true,
+        "cumulative_head_psd_gy": 2.331
       }
     }
   ]

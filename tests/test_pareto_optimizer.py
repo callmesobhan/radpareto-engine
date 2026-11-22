@@ -82,9 +82,7 @@ def test_pareto_frontier_exact_dominance_and_monotonicity() -> None:
     # Verify no feasible point dominates any frontier point
     for fp in res.pareto_frontier:
         for cand in res.all_feasible_points:
-            dominated = (cand.ctdi_vol_mgy <= fp.ctdi_vol_mgy - 1e-9) and (
-                cand.d_prime >= fp.d_prime + 1e-9
-            )
+            dominated = (cand.ctdi_vol_mgy <= fp.ctdi_vol_mgy - 1e-9) and (cand.d_prime >= fp.d_prime + 1e-9)
             assert not dominated
 
 
@@ -144,9 +142,7 @@ def test_inverse_solve_raises_tube_current_saturation_on_bariatric_ceiling() -> 
         ir_strength=0.0,
         hardware_limits=TubeHardwareLimits(max_tube_current_ma=280.0, max_power_kw=35.0),
     )
-    task = ClinicalTaskSpec(
-        name="5mm_liver_hard", diameter_mm=5.0, contrast_hu=15.0, d_prime_target=4.5
-    )
+    task = ClinicalTaskSpec(name="5mm_liver_hard", diameter_mm=5.0, contrast_hu=15.0, d_prime_target=4.5)
     with pytest.raises(AbstentionError) as exc_info:
         invert_min_dose_for_dprime(protocol=low_ma_proto, d_w_cm=42.0, task=task)
     assert exc_info.value.code == AbstentionCode.TUBE_CURRENT_SATURATION

@@ -19,7 +19,11 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy import ndimage
 
-from radpareto_engine.ir import FluoroIrradiationEvent, ProvenanceRecord
+from radpareto_engine.ir import (
+    FluoroIrradiationEvent,
+    MultiProcedureSession,
+    ProvenanceRecord,
+)
 from radpareto_engine.provenance import (
     assert_psd_below_sentinel,
     assert_rdsr_calibration_present,
@@ -241,10 +245,7 @@ def compute_atcm_modulation_curve(
         eff_mas = raw_mas
 
     ctdi_z = np.array(
-        [
-            estimate_ctdi_vol_mgy(kvp=kvp, effective_mas=float(m), filtration=filtration)
-            for m in eff_mas
-        ],
+        [estimate_ctdi_vol_mgy(kvp=kvp, effective_mas=float(m), filtration=filtration) for m in eff_mas],
         dtype=np.float64,
     )
     ssde_z = np.array(
@@ -284,9 +285,7 @@ def compute_ssde_and_organ_doses(
     # Mild spectral depth-dose correction (harder beams raise deep-to-surface ratio)
     spectral_depth_corr = 1.0 + 0.04 * ((kvp - 120.0) / 40.0)
     ratios = ORGAN_TO_SSDE_RATIO[anatomy]
-    organ_doses = {
-        organ: float(ssde * ratio * spectral_depth_corr) for organ, ratio in ratios.items()
-    }
+    organ_doses = {organ: float(ssde * ratio * spectral_depth_corr) for organ, ratio in ratios.items()}
     primary_organ = next(iter(organ_doses.keys()))
 
     prov = build_provenance(
@@ -337,8 +336,9 @@ def _classify_psd_tier(
 def compute_fluoro_3d_psd(
     events: list[FluoroIrradiationEvent],
     *,
-    patient_semi_axes_cm: tuple[float, float] = (17.5, 11.5),
-    torso_length_cm: float = 60.0,
+    geometry: Literal["torso", "head"] = "torso",
+    patient_semi_axes_cm: tuple[float, float] | None = None,
+    torso_length_cm: float | None = None,
     n_azimuth: int = 180,
     n_z: int = 120,
     require_calibration: bool = True,
@@ -347,16 +347,16 @@ def compute_fluoro_3d_psd(
 ) -> FluoroPSDResult:
     """Compute 3D ellipsoidal-cylinder patient-surface Peak Skin Dose (PSD) from DICOM RDSR events.
 
-    Coordinate convention (supine patient, head-first):
-    - x: patient left (+), right (-) [cm]
-    - y: anterior (+), posterior (-) [cm]; under-couch X-ray tube at PA (primary=0, secondary=0)
-      lies at (0, -source_to_isocenter, 0) pointing toward +y (entering posterior skin at y = -b).
-    - z: superior/cranial (+), inferior/caudal (-) [cm]
-    - Azimuth theta in [-180, 180) deg with theta=0 at posterior midline (0, -b),
-      theta > 0 toward patient left (LAO entrance), theta < 0 toward patient right (RAO entrance).
+    Supports both adult torso (`geometry="torso"`, default 17.5 x 11.5 cm semi-axes, 60 cm length)
+    and cranial neuro-interventional angiography (`geometry="head"`, default 8.2 x 9.8 cm, 24 cm).
     """
     if require_calibration:
         assert_rdsr_calibration_present(events)
+
+    if patient_semi_axes_cm is None:
+        patient_semi_axes_cm = (8.2, 9.8) if geometry == "head" else (17.5, 11.5)
+    if torso_length_cm is None:
+        torso_length_cm = 24.0 if geometry == "head" else 60.0
 
     rx, ry = float(patient_semi_axes_cm[0]), float(patient_semi_axes_cm[1])
     azimuth_deg = np.linspace(-180.0, 180.0, n_azimuth, endpoint=False)
@@ -466,10 +466,7 @@ def compute_fluoro_3d_psd(
         max_v = proj_along * tan_half
 
         in_beam = (
-            (proj_along > 5.0)
-            & (cos_inc > 0.05)
-            & (np.abs(proj_u) <= max_u)
-            & (np.abs(proj_v) <= max_v)
+            (proj_along > 5.0) & (cos_inc > 0.05) & (np.abs(proj_u) <= max_u) & (np.abs(proj_v) <= max_v)
         )
         if not np.any(in_beam):
             continue
@@ -489,9 +486,7 @@ def compute_fluoro_3d_psd(
         edge_v = np.clip((max_v[in_beam] - np.abs(proj_v[in_beam])) / 0.3, 0.0, 1.0)
         penumbra = edge_u * edge_v
 
-        contrib_mgy = (
-            ev.reference_air_kerma_mgy * inv_sq * t_eff * bsf * ev.f_factor_skin_over_air * penumbra
-        )
+        contrib_mgy = ev.reference_air_kerma_mgy * inv_sq * t_eff * bsf * ev.f_factor_skin_over_air * penumbra
         dose_map_mgy[in_beam] += contrib_mgy
 
     max_flat_idx = int(np.argmax(dose_map_mgy))
@@ -547,5 +542,124 @@ def compute_fluoro_3d_psd(
         z_cm_grid=z_cm,
         skin_dose_map_mgy=dose_map_mgy,
         n_events=len(events),
+        provenance=prov,
+    )
+
+
+@dataclass(frozen=True)
+class CumulativeMultiProcedurePSDResult:
+    """Longitudinal multi-procedure cumulative 3D Peak Skin Dose tracking result."""
+
+    cumulative_psd_mgy: float
+    cumulative_psd_gy: float
+    biological_effective_psd_gy: float
+    per_session_psd_gy: dict[str, float]
+    clinical_tier: Literal["ROUTINE", "ERYTHEMA_2GY", "SRDL_3GY", "FOLLOWUP_5GY", "SENTINEL_15GY"]
+    window_days: float
+    geometry: Literal["torso", "head"]
+    azimuth_deg_grid: NDArray[np.float64]
+    z_cm_grid: NDArray[np.float64]
+    cumulative_skin_dose_map_mgy: NDArray[np.float64]
+    provenance: ProvenanceRecord
+
+
+def compute_cumulative_multiprocedure_psd(
+    sessions: list[MultiProcedureSession],
+    *,
+    geometry: Literal["torso", "head"] = "torso",
+    repair_half_life_days: float | None = 180.0,
+    n_azimuth: int = 120,
+    n_z: int = 80,
+    require_calibration: bool = True,
+    enforce_sentinel_gate: bool = False,
+    sentinel_threshold_mgy: float = 15000.0,
+) -> CumulativeMultiProcedurePSDResult:
+    """Accumulate 3D patient-surface skin dose across staged interventional procedures.
+
+    Computes both strict zero-decay cumulative PSD (The Joint Commission >= 15 Gy sentinel
+    event governance over 6-12 months) and optional exponential sub-lethal repair-weighted PSD.
+    """
+    if not sessions:
+        raise ValueError("At least one MultiProcedureSession is required.")
+
+    sorted_sessions = sorted(sessions, key=lambda s: s.day_offset)
+    max_day = float(sorted_sessions[-1].day_offset)
+
+    accum_zero_decay: NDArray[np.float64] | None = None
+    accum_repair: NDArray[np.float64] | None = None
+    az_grid: NDArray[np.float64] | None = None
+    z_grid: NDArray[np.float64] | None = None
+    per_session_gy: dict[str, float] = {}
+
+    for sess in sorted_sessions:
+        res = compute_fluoro_3d_psd(
+            sess.events,
+            geometry=geometry,
+            n_azimuth=n_azimuth,
+            n_z=n_z,
+            require_calibration=require_calibration,
+            enforce_sentinel_gate=False,
+        )
+        per_session_gy[sess.session_id] = round(res.peak_skin_dose_gy, 4)
+        dt = max_day - float(sess.day_offset)
+        decay_w = (
+            float(0.5 ** (dt / repair_half_life_days))
+            if (repair_half_life_days is not None and repair_half_life_days > 0.0)
+            else 1.0
+        )
+        if accum_zero_decay is None:
+            accum_zero_decay = res.skin_dose_map_mgy.copy()
+            accum_repair = res.skin_dose_map_mgy * decay_w
+            az_grid = res.azimuth_deg_grid
+            z_grid = res.z_cm_grid
+        else:
+            accum_zero_decay += res.skin_dose_map_mgy
+            assert accum_repair is not None
+            accum_repair += res.skin_dose_map_mgy * decay_w
+
+    assert accum_zero_decay is not None and accum_repair is not None
+    assert az_grid is not None and z_grid is not None
+
+    cum_peak_mgy = float(np.max(accum_zero_decay))
+    bio_peak_mgy = float(np.max(accum_repair))
+    tier = _classify_psd_tier(cum_peak_mgy)
+
+    if enforce_sentinel_gate:
+        assert_psd_below_sentinel(
+            peak_skin_dose_mgy=cum_peak_mgy,
+            sentinel_threshold_mgy=sentinel_threshold_mgy,
+            hotspot_coords={"n_sessions": float(len(sorted_sessions)), "window_days": max_day},
+        )
+
+    prov = build_provenance(
+        artifact_kind="derived_simulation",
+        inputs={
+            "session_ids": [s.session_id for s in sorted_sessions],
+            "day_offsets": [s.day_offset for s in sorted_sessions],
+            "geometry": geometry,
+            "repair_half_life_days": repair_half_life_days,
+        },
+        outputs={
+            "cumulative_psd_gy": round(cum_peak_mgy / 1000.0, 4),
+            "biological_effective_psd_gy": round(bio_peak_mgy / 1000.0, 4),
+            "clinical_tier": tier,
+        },
+        standards_referenced=[
+            *DOSIMETRY_STANDARDS[3:],
+            "The Joint Commission Fluoroscopic Sentinel Event Policy (>= 15 Gy cumulative PSD)",
+        ],
+        calibration_verified=require_calibration,
+    )
+    return CumulativeMultiProcedurePSDResult(
+        cumulative_psd_mgy=cum_peak_mgy,
+        cumulative_psd_gy=cum_peak_mgy / 1000.0,
+        biological_effective_psd_gy=bio_peak_mgy / 1000.0,
+        per_session_psd_gy=per_session_gy,
+        clinical_tier=tier,
+        window_days=max_day,
+        geometry=geometry,
+        azimuth_deg_grid=az_grid,
+        z_cm_grid=z_grid,
+        cumulative_skin_dose_map_mgy=accum_zero_decay,
         provenance=prov,
     )

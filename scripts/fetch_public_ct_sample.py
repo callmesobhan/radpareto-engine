@@ -25,7 +25,9 @@ import pydicom.examples
 from radpareto_engine.dicom_io import read_ct_dicom
 from radpareto_engine.provenance import sha256_file
 
-UPSTREAM_CT_URL = "https://raw.githubusercontent.com/pydicom/pydicom/main/src/pydicom/data/test_files/CT_small.dcm"
+UPSTREAM_CT_URL = (
+    "https://raw.githubusercontent.com/pydicom/pydicom/main/src/pydicom/data/test_files/CT_small.dcm"
+)
 UPSTREAM_LICENSE_URL = "https://raw.githubusercontent.com/pydicom/pydicom/main/LICENSE"
 
 ATTRIBUTION_MD = """# Public CT DICOM Sample Attribution
@@ -113,9 +115,7 @@ def fetch_public_ct_sample(output_dir: Path, online: bool = False) -> Path:
                     "manufacturer": parsed.manufacturer,
                     "hu_min": float(parsed.hu_array.min()),
                     "hu_max": float(parsed.hu_array.max()),
-                    "aapm_tg220_d_w_cm": (
-                        round(parsed.d_w_result.d_w_cm, 4) if parsed.d_w_result else None
-                    ),
+                    "aapm_tg220_d_w_cm": (round(parsed.d_w_result.d_w_cm, 4) if parsed.d_w_result else None),
                     "aapm_tg220_d_eff_cm": (
                         round(parsed.d_w_result.d_eff_cm, 4) if parsed.d_w_result else None
                     ),
@@ -145,9 +145,7 @@ def main() -> None:
         type=Path,
         default=Path(__file__).resolve().parents[1] / "data" / "public_ct_sample",
     )
-    parser.add_argument(
-        "--online", action="store_true", help="Fetch directly from GitHub raw URLs."
-    )
+    parser.add_argument("--online", action="store_true", help="Fetch directly from GitHub raw URLs.")
     args = parser.parse_args()
     manifest_path = fetch_public_ct_sample(args.output_dir, online=args.online)
     print(f"Staged public CT sample and verified manifest at: {manifest_path}")

@@ -30,6 +30,7 @@ from radpareto_engine.ir import (
     ParetoPoint,
     ProvenanceRecord,
     ReconMode,
+    VMISpec,
 )
 from radpareto_engine.provenance import (
     assert_tube_hardware_within_limits,
@@ -188,9 +189,7 @@ def _synthetic_ttf_and_nps_curves(
         ReconMode.DEEP_LEARNING_RECON: 0.18,
     }[recon_mode]
     f_cutoff = max(0.18, 0.46 * kernel_sharpness * (1.0 - mode_shift * ir_strength))
-    nps_shape = np.power(np.maximum(freqs_mm_inv, 1e-4), 1.25) * np.exp(
-        -((freqs_mm_inv / f_cutoff) ** 2.6)
-    )
+    nps_shape = np.power(np.maximum(freqs_mm_inv, 1e-4), 1.25) * np.exp(-((freqs_mm_inv / f_cutoff) ** 2.6))
     nps_shape[0] = 0.0
 
     # Normalize strictly so integral(2*pi*f * NPS_1D(f) df) == noise_std_hu^2 (Parseval exact)
@@ -409,8 +408,7 @@ def solve_pareto_frontier(
                 cand_proto = base_protocol.model_copy(
                     update={
                         "protocol_id": (
-                            f"{base_protocol.protocol_id}_{kvp}kV_{filt}"
-                            f"_{rmode.value}_ir{ir_str:.2f}"
+                            f"{base_protocol.protocol_id}_{kvp}kV_{filt}_{rmode.value}_ir{ir_str:.2f}"
                         ),
                         "kvp": float(kvp),
                         "filtration": filt,
@@ -448,9 +446,7 @@ def solve_pareto_frontier(
     frontier = extract_pareto_frontier(feasible, dose_metric=dose_metric)
     frontier_ids = {(p.protocol_id, round(p.ctdi_vol_mgy, 6)) for p in frontier}
     tagged_all = [
-        p.model_copy(
-            update={"is_pareto_optimal": (p.protocol_id, round(p.ctdi_vol_mgy, 6)) in frontier_ids}
-        )
+        p.model_copy(update={"is_pareto_optimal": (p.protocol_id, round(p.ctdi_vol_mgy, 6)) in frontier_ids})
         for p in feasible
     ]
 
@@ -504,9 +500,7 @@ def invert_min_dose_for_dprime(
     table_feed_cm = (canon.collimation_mm / 10.0) * canon.pitch
     n_rot = max(canon.scan_length_cm / max(table_feed_cm, 0.1), 1.0)
     scan_time_s = n_rot * canon.rotation_time_s
-    max_ma_from_heat = (lim.anode_heat_capacity_mhu * 1.0e6) / max(
-        1.35 * canon.kvp * scan_time_s, 1e-6
-    )
+    max_ma_from_heat = (lim.anode_heat_capacity_mhu * 1.0e6) / max(1.35 * canon.kvp * scan_time_s, 1e-6)
     max_feasible_ma = min(lim.max_tube_current_ma, max_ma_from_kw, max_ma_from_heat)
 
     max_eff_mas = max_feasible_ma * canon.rotation_time_s / canon.pitch
@@ -603,3 +597,410 @@ def invert_min_dose_for_dprime(
         anode_heat_mhu=sol_pt.anode_heat_mhu,
         provenance=prov,
     )
+
+
+@dataclass(frozen=True)
+class VMIEvaluationPoint:
+    """Photon-Counting CT (PCCT) / Dual-Energy Virtual Monoenergetic Image operating point."""
+
+    vmi_kev: float
+    is_photon_counting: bool
+    ultra_high_res_mode: bool
+    effective_contrast_hu: float
+    noise_std_hu: float
+    f50_mm_inv: float
+    d_prime_npwe: float
+    d_prime_cho: float
+    ctdi_vol_mgy: float
+    ssde_mgy: float
+
+
+@dataclass(frozen=True)
+class MultiTaskParetoPoint:
+    """Operating point evaluated jointly across multiple simultaneous clinical tasks."""
+
+    protocol_id: str
+    kvp: float
+    filtration: str
+    recon_mode: ReconMode
+    ir_strength: float
+    ctdi_vol_mgy: float
+    ssde_mgy: float
+    task_d_primes: dict[str, float]
+    task_ratios: dict[str, float]
+    min_guardrail_ratio: float
+    binding_task_name: str
+    all_tasks_compliant: bool
+    is_pareto_optimal: bool
+
+
+@dataclass(frozen=True)
+class MultiTaskParetoResult:
+    """Joint multi-task Dose-Detectability Pareto frontier across simultaneous clinical tasks."""
+
+    d_w_cm: float
+    task_names: list[str]
+    all_feasible_points: list[MultiTaskParetoPoint]
+    pareto_frontier: list[MultiTaskParetoPoint]
+    best_compliant_point: MultiTaskParetoPoint | None
+    provenance: ProvenanceRecord
+
+
+@dataclass(frozen=True)
+class LongitudinalATCMOptimizationResult:
+    """Optimized longitudinal z-axis ATCM tube-current profile guaranteeing per-slice d' >= d'_min."""
+
+    optimal_atcm_strength: float
+    optimal_ref_mas: float
+    z_cm: list[float]
+    d_w_profile_cm: list[float]
+    ctdi_vol_z_mgy: list[float]
+    d_prime_z: list[float]
+    min_d_prime_across_z: float
+    mean_ctdi_vol_mgy: float
+    total_dlp_mgy_cm: float
+    any_saturated: bool
+    provenance: ProvenanceRecord
+
+
+def evaluate_vmi_operating_point(
+    *,
+    protocol: CTProtocolSpec,
+    d_w_cm: float,
+    task: ClinicalTaskSpec,
+    vmi: VMISpec,
+    ctdi_vol_mgy: float,
+) -> VMIEvaluationPoint:
+    """Evaluate Photon-Counting CT / Dual-Energy Virtual Monoenergetic (40-140 keV) detectability.
+
+    Models iodine K-edge enhancement near 40-55 keV (~(70/keV)^2.45 for iodine above 33.2 keV),
+    realistic low-keV noise amplification moderated by PCCT electronic-noise-free counting +
+    spectral denoising, and optional Ultra-High-Resolution (UHR) detector MTF boost.
+    """
+    base_pt = evaluate_protocol_operating_point(
+        protocol=protocol,
+        d_w_cm=d_w_cm,
+        task=task,
+        ctdi_vol_override_mgy=ctdi_vol_mgy,
+        enforce_hardware_limits=False,
+    )
+    kev = float(vmi.vmi_kev)
+    # Monochromatic contrast scaling anchored at 70 keV (approx 120 kVp polychromatic effective energy)
+    if task.material_type == "iodine":
+        contrast_mult = (70.0 / kev) ** 2.35
+    elif task.material_type == "calcium_bone":
+        contrast_mult = (70.0 / kev) ** 1.45
+    elif task.material_type == "soft_tissue":
+        contrast_mult = 1.0 + 0.14 * ((70.0 - kev) / 30.0)
+    else:
+        contrast_mult = 1.0
+
+    eff_contrast = float(task.contrast_hu * max(contrast_mult, 0.25))
+
+    # VMI noise curve: U-shaped with minimum around 68-75 keV; sharper low-keV rise in EID-DECT
+    # vs strongly suppressed low-keV & electronic noise in PCCT
+    low_kev_penalty = max(0.0, (68.0 - kev) / 28.0) ** 2
+    high_kev_penalty = max(0.0, (kev - 75.0) / 65.0) ** 2
+    if vmi.is_photon_counting:
+        vmi_noise_mult = 0.84 * np.sqrt(1.0 + 0.95 * low_kev_penalty + 0.12 * high_kev_penalty)
+    else:
+        vmi_noise_mult = 1.00 * np.sqrt(1.0 + 2.65 * low_kev_penalty + 0.25 * high_kev_penalty)
+
+    uhr_sharpness = 1.55 if vmi.ultra_high_res_mode else 1.0
+    uhr_noise_pen = 1.15 if vmi.ultra_high_res_mode else 1.0
+    noise_std = float(base_pt.noise_std_hu * vmi_noise_mult * uhr_noise_pen)
+
+    freqs = np.linspace(0.0, 1.4 if vmi.ultra_high_res_mode else 1.0, 280)
+    eff_task = task.model_copy(update={"contrast_hu": eff_contrast})
+    ttf, nps_1d, f50, _ = _synthetic_ttf_and_nps_curves(
+        freqs_mm_inv=freqs,
+        effective_contrast_hu=eff_contrast,
+        noise_std_hu=noise_std,
+        recon_mode=protocol.recon_mode,
+        ir_strength=protocol.ir_strength,
+        kernel_sharpness=protocol.kernel_sharpness * uhr_sharpness,
+    )
+    dp = compute_detectability_dprime(freqs, ttf, nps_1d, eff_task)
+    return VMIEvaluationPoint(
+        vmi_kev=kev,
+        is_photon_counting=vmi.is_photon_counting,
+        ultra_high_res_mode=vmi.ultra_high_res_mode,
+        effective_contrast_hu=eff_contrast,
+        noise_std_hu=noise_std,
+        f50_mm_inv=f50,
+        d_prime_npwe=float(dp["d_prime_npwe"]),
+        d_prime_cho=float(dp["d_prime_cho"]),
+        ctdi_vol_mgy=float(ctdi_vol_mgy),
+        ssde_mgy=base_pt.ssde_mgy,
+    )
+
+
+def sweep_vmi_energy_curve(
+    *,
+    protocol: CTProtocolSpec,
+    d_w_cm: float,
+    task: ClinicalTaskSpec,
+    ctdi_vol_mgy: float,
+    kev_grid: list[float] | None = None,
+    is_photon_counting: bool = True,
+    ultra_high_res_mode: bool = False,
+) -> list[VMIEvaluationPoint]:
+    """Sweep VMI monoenergetic levels (40-140 keV) to find optimal spectral energy for task d'."""
+    kevs = kev_grid or [40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0, 80.0, 100.0, 120.0, 140.0]
+    return [
+        evaluate_vmi_operating_point(
+            protocol=protocol,
+            d_w_cm=d_w_cm,
+            task=task,
+            vmi=VMISpec(
+                vmi_kev=float(k),
+                is_photon_counting=is_photon_counting,
+                ultra_high_res_mode=ultra_high_res_mode,
+            ),
+            ctdi_vol_mgy=ctdi_vol_mgy,
+        )
+        for k in kevs
+    ]
+
+
+def solve_multitask_pareto_frontier(
+    *,
+    base_protocol: CTProtocolSpec,
+    d_w_cm: float,
+    tasks: list[ClinicalTaskSpec],
+    kvp_grid: list[int] | None = None,
+    recon_configs: list[tuple[ReconMode, float]] | None = None,
+    ctdi_grid_mgy: list[float] | None = None,
+) -> MultiTaskParetoResult:
+    """Solve joint multi-task CT Pareto frontier enforcing d'_k >= d'_{k,min} across all tasks."""
+    if len(tasks) < 2:
+        raise ValueError("Multi-task Pareto optimization requires at least 2 ClinicalTaskSpec items.")
+
+    lim = base_protocol.hardware_limits
+    kvps = kvp_grid or [k for k in lim.available_kvp if k >= 80]
+    recons = recon_configs or [
+        (ReconMode.FBP, 0.0),
+        (ReconMode.HYBRID_IR, 0.5),
+        (ReconMode.MODEL_BASED_IR, 0.7),
+        (ReconMode.DEEP_LEARNING_RECON, 0.75),
+    ]
+    ctdis = ctdi_grid_mgy or list(np.geomspace(1.5, 28.0, 12))
+
+    candidates: list[MultiTaskParetoPoint] = []
+    for kvp in kvps:
+        if kvp not in lim.available_kvp:
+            continue
+        for rmode, ir_s in recons:
+            cand_proto = base_protocol.model_copy(
+                update={
+                    "protocol_id": f"{base_protocol.protocol_id}_{kvp}kV_{rmode.value}_ir{ir_s:.2f}",
+                    "kvp": float(kvp),
+                    "recon_mode": rmode,
+                    "ir_strength": float(ir_s),
+                }
+            )
+            for ctdi in ctdis:
+                task_dps: dict[str, float] = {}
+                task_ratios: dict[str, float] = {}
+                ssde_val = 0.0
+                feasible = True
+                for t in tasks:
+                    try:
+                        pt = evaluate_protocol_operating_point(
+                            protocol=cand_proto,
+                            d_w_cm=d_w_cm,
+                            task=t,
+                            ctdi_vol_override_mgy=float(ctdi),
+                            enforce_hardware_limits=True,
+                        )
+                    except AbstentionError as exc:
+                        if exc.code == AbstentionCode.TUBE_CURRENT_SATURATION:
+                            feasible = False
+                            break
+                        raise
+                    task_dps[t.name] = pt.d_prime
+                    task_ratios[t.name] = pt.d_prime / t.d_prime_target
+                    ssde_val = pt.ssde_mgy
+
+                if not feasible:
+                    continue
+                binding_task = min(task_ratios, key=lambda name: task_ratios[name])
+                min_ratio = task_ratios[binding_task]
+                candidates.append(
+                    MultiTaskParetoPoint(
+                        protocol_id=cand_proto.protocol_id,
+                        kvp=float(kvp),
+                        filtration=cand_proto.filtration,
+                        recon_mode=rmode,
+                        ir_strength=float(ir_s),
+                        ctdi_vol_mgy=float(ctdi),
+                        ssde_mgy=ssde_val,
+                        task_d_primes=task_dps,
+                        task_ratios=task_ratios,
+                        min_guardrail_ratio=float(min_ratio),
+                        binding_task_name=binding_task,
+                        all_tasks_compliant=bool(min_ratio >= 1.0 - 1e-6),
+                        is_pareto_optimal=False,
+                    )
+                )
+
+    # Extract exact non-dominated frontier minimizing CTDIvol & maximizing min_guardrail_ratio
+    sorted_c = sorted(candidates, key=lambda p: (p.ctdi_vol_mgy, -p.min_guardrail_ratio))
+    frontier: list[MultiTaskParetoPoint] = []
+    best_ratio = -1.0
+    frontier_keys: set[tuple[str, float]] = set()
+    for pt in sorted_c:
+        if pt.min_guardrail_ratio > best_ratio + 1e-9:
+            fp = MultiTaskParetoPoint(
+                **{**pt.__dict__, "is_pareto_optimal": True},
+            )
+            frontier.append(fp)
+            frontier_keys.add((pt.protocol_id, round(pt.ctdi_vol_mgy, 6)))
+            best_ratio = pt.min_guardrail_ratio
+
+    tagged_all = [
+        MultiTaskParetoPoint(
+            **{
+                **p.__dict__,
+                "is_pareto_optimal": (p.protocol_id, round(p.ctdi_vol_mgy, 6)) in frontier_keys,
+            }
+        )
+        for p in candidates
+    ]
+    compliant_front = [p for p in frontier if p.all_tasks_compliant]
+    best_compliant = compliant_front[0] if compliant_front else None
+
+    prov = build_provenance(
+        artifact_kind="pareto_solution",
+        inputs={
+            "base_protocol_id": base_protocol.protocol_id,
+            "d_w_cm": d_w_cm,
+            "task_names": [t.name for t in tasks],
+        },
+        outputs={
+            "n_feasible": len(tagged_all),
+            "n_pareto_optimal": len(frontier),
+            "best_compliant_ctdi_mgy": (round(best_compliant.ctdi_vol_mgy, 4) if best_compliant else None),
+            "binding_task": best_compliant.binding_task_name if best_compliant else None,
+        },
+        standards_referenced=PARETO_STANDARDS,
+        calibration_verified=True,
+    )
+    return MultiTaskParetoResult(
+        d_w_cm=float(d_w_cm),
+        task_names=[t.name for t in tasks],
+        all_feasible_points=tagged_all,
+        pareto_frontier=frontier,
+        best_compliant_point=best_compliant,
+        provenance=prov,
+    )
+
+
+def optimize_longitudinal_atcm_profile(
+    *,
+    protocol: CTProtocolSpec,
+    z_cm: list[float],
+    d_w_profile_cm: list[float],
+    task: ClinicalTaskSpec,
+    atcm_strength_grid: list[float] | None = None,
+) -> LongitudinalATCMOptimizationResult:
+    """Optimize (atcm_strength, ref_mas) across a longitudinal D_w(z) topogram to minimize DLP.
+
+    Guarantees per-slice task detectability d'(z) >= task.d_prime_target at every z-position
+    within X-ray tube hardware limits.
+    """
+    if len(z_cm) != len(d_w_profile_cm) or len(z_cm) < 2:
+        raise ValueError("z_cm and d_w_profile_cm must have identical length >= 2.")
+
+    strengths = atcm_strength_grid or [0.0, 0.25, 0.5, 0.75, 0.95, 1.0]
+    scan_len = float(abs(z_cm[-1] - z_cm[0]))
+    mu_eff = interpolate_water_mu(protocol.kvp, protocol.filtration)
+    d_w_ref = 18.0 if protocol.anatomy == "head" else 29.0
+
+    # Precompute exact minimum required effective mAs at each z-slice to hit d' == target
+    min_mas_z: list[float] = []
+    for dw in d_w_profile_cm:
+        sol = invert_min_dose_for_dprime(
+            protocol=protocol,
+            d_w_cm=float(dw),
+            task=task,
+            d_prime_target=task.d_prime_target,
+        )
+        min_mas_z.append(sol.required_effective_mas)
+
+    best_result: LongitudinalATCMOptimizationResult | None = None
+    for alpha in strengths:
+        # ATCM curve: eff_mas(z) = ref_mas * exp(alpha * mu_eff * (D_w(z) - D_w_ref))
+        # To guarantee eff_mas(z) >= min_mas_z(z) for all z:
+        ratios = [
+            m_req / float(np.exp(alpha * mu_eff * (float(dw) - d_w_ref)))
+            for m_req, dw in zip(min_mas_z, d_w_profile_cm, strict=True)
+        ]
+        req_ref_mas = float(max(ratios))
+        cand_proto = protocol.model_copy(
+            update={"atcm_strength": float(alpha), "ref_mas": req_ref_mas, "ctdi_vol_mgy": None}
+        )
+
+        ctdi_z: list[float] = []
+        dp_z: list[float] = []
+        any_sat = False
+        for dw in d_w_profile_cm:
+            try:
+                pt = evaluate_protocol_operating_point(
+                    protocol=cand_proto,
+                    d_w_cm=float(dw),
+                    task=task,
+                    enforce_hardware_limits=True,
+                )
+            except AbstentionError as exc:
+                if exc.code == AbstentionCode.TUBE_CURRENT_SATURATION:
+                    any_sat = True
+                    break
+                raise
+            ctdi_z.append(pt.ctdi_vol_mgy)
+            dp_z.append(pt.d_prime)
+
+        if any_sat:
+            continue
+        mean_ctdi = float(np.mean(ctdi_z))
+        dlp = float(mean_ctdi * scan_len)
+        if best_result is None or dlp < best_result.total_dlp_mgy_cm:
+            prov = build_provenance(
+                artifact_kind="pareto_solution",
+                inputs={
+                    "protocol_id": protocol.protocol_id,
+                    "n_z_slices": len(z_cm),
+                    "d_w_min_cm": min(d_w_profile_cm),
+                    "d_w_max_cm": max(d_w_profile_cm),
+                    "d_prime_target": task.d_prime_target,
+                },
+                outputs={
+                    "optimal_atcm_strength": float(alpha),
+                    "optimal_ref_mas": round(req_ref_mas, 3),
+                    "mean_ctdi_vol_mgy": round(mean_ctdi, 4),
+                    "total_dlp_mgy_cm": round(dlp, 2),
+                },
+                standards_referenced=PARETO_STANDARDS,
+                calibration_verified=True,
+            )
+            best_result = LongitudinalATCMOptimizationResult(
+                optimal_atcm_strength=float(alpha),
+                optimal_ref_mas=req_ref_mas,
+                z_cm=[float(z) for z in z_cm],
+                d_w_profile_cm=[float(d) for d in d_w_profile_cm],
+                ctdi_vol_z_mgy=ctdi_z,
+                d_prime_z=dp_z,
+                min_d_prime_across_z=float(min(dp_z)),
+                mean_ctdi_vol_mgy=mean_ctdi,
+                total_dlp_mgy_cm=dlp,
+                any_saturated=False,
+                provenance=prov,
+            )
+
+    if best_result is None:
+        raise AbstentionError(
+            AbstentionCode.TUBE_CURRENT_SATURATION,
+            f"No hardware-feasible ATCM strength meets d' >= {task.d_prime_target} across D_w(z).",
+            details={"protocol_id": protocol.protocol_id, "d_w_max": max(d_w_profile_cm)},
+        )
+    return best_result

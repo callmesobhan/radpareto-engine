@@ -155,9 +155,7 @@ def test_gate_missing_rdsr_calibration() -> None:
 
 def test_gate_parseval_nps_violation() -> None:
     """Verify PARSEVAL_NPS_VIOLATION triggers when integral(NPS) disagrees with variance."""
-    rel = assert_parseval_invariant(
-        nps_integral_hu2=400.0, image_variance_hu2=402.0, tolerance=0.02
-    )
+    rel = assert_parseval_invariant(nps_integral_hu2=400.0, image_variance_hu2=402.0, tolerance=0.02)
     assert rel < 0.01
 
     with pytest.raises(AbstentionError) as exc_info:

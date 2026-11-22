@@ -1,5 +1,5 @@
 {
-  "engine_version": "0.1.0",
+  "engine_version": "0.2.0",
   "fig1_tg233_metrology": {
     "ttf_fbp_f50": 0.48103349668332374,
     "ttf_mbir_hi_f50": 0.4216964729843205,
@@ -127,12 +127,12 @@
       "output_mean": 4.151420375416997,
       "output_std": 1.7598729419050214,
       "provenance": {
-        "schema_version": "1.0.0",
-        "engine_version": "0.1.0",
+        "schema_version": "1.1.0",
+        "engine_version": "0.2.0",
         "artifact_kind": "sobol_uq",
         "input_sha256": "f334ce81039cd1b6d5802150e9770eb5c40e656f786d96873e9db28d5e993bf6",
         "output_sha256": "fd95648226e1459b8ecf51d871a270b846e7c7c975b864f021690afe68038d85",
-        "timestamp_utc": "2026-11-22T11:07:38.569894+00:00",
+        "timestamp_utc": "2026-11-22T11:36:16.491858+00:00",
         "standards_referenced": [
           "Saltelli et al., Comput Phys Commun 2010;181(2):259-270 (DOI:10.1016/j.cpc.2009.09.018)",
           "Jansen, Comput Phys Commun 1999;117(1-2):35-43 (DOI:10.1016/S0010-4655(98)00154-4)"
@@ -221,12 +221,12 @@
       "output_mean": 2674.2866727067294,
       "output_std": 656.9231127762896,
       "provenance": {
-        "schema_version": "1.0.0",
-        "engine_version": "0.1.0",
+        "schema_version": "1.1.0",
+        "engine_version": "0.2.0",
         "artifact_kind": "sobol_uq",
         "input_sha256": "a595574c98442dd53754d5ba24b618966d63c96d33f677914169a269be431b37",
         "output_sha256": "b1a9032f4f8f5629b53b6afc1deedc2db781afb31b67aa4d43cad28e8c1f7cf4",
-        "timestamp_utc": "2026-11-22T11:07:38.762060+00:00",
+        "timestamp_utc": "2026-11-22T11:36:16.682322+00:00",
         "standards_referenced": [
           "Saltelli et al., Comput Phys Commun 2010;181(2):259-270 (DOI:10.1016/j.cpc.2009.09.018)",
           "Jansen, Comput Phys Commun 1999;117(1-2):35-43 (DOI:10.1016/S0010-4655(98)00154-4)"
@@ -242,5 +242,20 @@
     "public_ct_d_eff_cm": 8.457915099054189,
     "max_parseval_rel_err": 2.9337844824818806e-16,
     "max_dprime_scaling_rel_err": 2.0182764772568117e-16
+  },
+  "fig7_multitask_vmi_calibration": {
+    "calibration_r2_noise": 0.9999233474544998,
+    "calibration_r2_f50": 0.9916382765500975,
+    "multitask_best_ctdi_mgy": 6.675188856578919,
+    "multitask_binding_task": "5mm_low_contrast_liver_lesion",
+    "pcct_optimal_kev": 40.0,
+    "pcct_peak_d_prime": 20.988871123925744
+  },
+  "fig8_qa_cusum_multiprocedure_psd": {
+    "qa_cusum_drift_detected": true,
+    "qa_dprime_first_alert_session": 20,
+    "multiprocedure_final_psd_gy": 15.794987511304457,
+    "multiprocedure_bio_psd_gy": 12.717535287181793,
+    "atcm_dlp_savings_pct": 44.814595857318885
   }
 }

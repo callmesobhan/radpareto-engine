@@ -345,20 +345,14 @@ def _critic_verify_candidate(
     if recomputed.d_prime >= task.d_prime_target - 1e-3:
         checks_passed.append("D_PRIME_GUARDRAIL_MET")
     else:
-        checks_failed.append(
-            f"D_PRIME_BELOW_MIN:{recomputed.d_prime:.3f}<{task.d_prime_target:.3f}"
-        )
+        checks_failed.append(f"D_PRIME_BELOW_MIN:{recomputed.d_prime:.3f}<{task.d_prime_target:.3f}")
 
     if recomputed.hardware_utilization_frac <= 1.0 + 1e-6:
         checks_passed.append("TUBE_UTILIZATION_SAFE")
     else:
         checks_failed.append(f"TUBE_OVERLOAD:{recomputed.hardware_utilization_frac:.3f}")
 
-    if (
-        recomputed.f50_mm_inv > 0.1
-        and recomputed.f_peak_mm_inv > 0.05
-        and recomputed.ssde_mgy > 0.0
-    ):
+    if recomputed.f50_mm_inv > 0.1 and recomputed.f_peak_mm_inv > 0.05 and recomputed.ssde_mgy > 0.0:
         checks_passed.append("PHYSICAL_SPECTRAL_BOUNDS_OK")
     else:
         checks_failed.append("UNPHYSICAL_SPECTRAL_METRICS")

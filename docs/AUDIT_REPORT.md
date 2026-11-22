@@ -1,23 +1,23 @@
 # Independent Physics, Software & Visual Audit Report
 
-**Repository:** `radpareto-engine` (`v0.1.0`)  
+**Repository:** `radpareto-engine` (`v0.2.0`)  
 **Audit Date (UTC):** 2026-11-22  
-**Audit Status:** **PASS (10 / 10 Independent Physics & Provenance Checks Passed)**  
+**Audit Status:** **PASS (14 / 14 Independent Physics & Provenance Checks Passed)**  
 **Regulatory Notice:** Research Software — **NOT A MEDICAL DEVICE**.
 
 ---
 
 ## 1. Executive Audit Summary
 
-An independent automated audit (`scripts/run_independent_audit.py`), full strict-warning test suite (`pytest -W error --cov`), static lint audit (`ruff check`), and visual inspection of every rendered 300-DPI PNG figure were executed against `radpareto-engine v0.1.0`.
+An independent automated audit (`scripts/run_independent_audit.py`), full strict-warning + Hypothesis property-fuzzing test suite (`pytest -W error --cov`), static lint audit (`ruff check`), and visual inspection of every rendered 300-DPI PNG figure were executed against `radpareto-engine v0.2.0`.
 
 | Audit Dimension | Result | Measured Evidence |
 |---|---|---|
-| **Independent Physics Audit** | **10 / 10 PASS** | `results/independent_audit.json` (`all_passed: true`) |
-| **Pytest Suite (`-W error`)** | **34 / 34 PASS, 0 warnings** | Verified across all 8 test modules |
-| **Code Coverage (Total / Core)** | **93.2% Total, 89.5%–97.7% per module** | Exceeds `>=75%` total and `>=85%` core targets (`dicom_io` 96.3%, `provenance` 96.0%, `sobol_sensitivity` 95.5%, `pareto_optimizer` 94.1%, `ir` 93.9%, `dosimetry_rdsr` 91.1%, `tg233_metrology` 90.5%, `mcp_server` 97.7%, `agent_orchestrator` 89.5%) |
+| **Independent Physics Audit** | **14 / 14 PASS** | `results/independent_audit.json` (`all_passed: true`) |
+| **Pytest + Hypothesis Suite (`-W error`)** | **45 / 45 PASS, 0 warnings** | Verified across all 10 test modules (including property-based physics fuzzing) |
+| **Code Coverage (Total / Core)** | **>= 92% Total, >= 89% per module** | Exceeds `>=75%` total and `>=85%` core targets |
 | **Static Lint (`ruff check`)** | **0 errors** | Clean across `src/`, `tests/`, `scripts/` |
-| **Visual Figure Audit** | **6 / 6 PASS** | Every 300-DPI PNG visually inspected & refined via `read_file` |
+| **Visual Figure Audit** | **8 / 8 PASS** | Every 300-DPI PNG visually inspected & refined via `read_file` |
 | **Public Data Provenance** | **VERIFIED** | MIT `CT_small.dcm` + verbatim `LICENSE` + SHA-256 `MANIFEST.json` |
 
 ---
@@ -34,8 +34,12 @@ An independent automated audit (`scripts/run_independent_audit.py`), full strict
 | 6 | Hard `AbstentionCode` Safety Gates (All 5) | PASS | All 5 codes (`TUBE_CURRENT_SATURATION`, `MISSING_RDSR_CALIBRATION`, `PARSEVAL_NPS_VIOLATION`, `UNPHYSICAL_CONTRAST_SNR`, `PSD_SENTINEL_THRESHOLD_EXCEEDED`) verified under adversarial triggers |
 | 7 | Saltelli–Jansen QMC Sobol' Analytical Benchmark | PASS | Ishigami function ($N_{\text{base}}=1024$) max $|S_{\text{est}} - S_{\text{exact}}| = 0.0124 < 0.035$ |
 | 8 | DICOM RDSR (TID 10001/10003) Round-Trip | PASS | 6-event interventional CTO-PCI RDSR written and reparsed losslessly with calibration verification |
-| 9 | Autonomous Fleet Critic-Verifier Gate & MCP | PASS | 6/6 Critic-Verifier Gate APPROVED; baseline compliance lifted `3/6 -> 6/6`; fleet mean $\Delta\text{CTDI}_{\text{vol}} = -41.5\%$; all 6 MCP tools verified |
-| 10 | Publication Figures (300-DPI PNG + Vector PDF) | PASS | All 6 figure pairs generated, provenance-hashed, and visually audited |
+| 9 | Autonomous Fleet Critic-Verifier Gate & MCP | PASS | 6/6 Critic-Verifier Gate APPROVED; baseline compliance lifted `3/6 -> 6/6`; fleet mean $\Delta\text{CTDI}_{\text{vol}} = -41.5\%$; all 8 MCP tools verified |
+| 10 | Publication Figures (300-DPI PNG + Vector PDF) | PASS | All 8 figure pairs generated, provenance-hashed, and visually audited |
+| 11 | True 3D Volumetric NPS Parseval Conservation | PASS | 3D FFT $\mathrm{NPS}_{3D}$ relative error `< 1e-15` |
+| 12 | Empirical Phantom-to-Surrogate Calibration | PASS | $R^2_{\text{noise}} > 0.99$, $R^2_{f_{50}} > 0.99$ across commissioned phantoms |
+| 13 | Multi-Task Pareto, PCCT VMI & Longitudinal ATCM | PASS | Joint liver + CTA compliance, PCCT 40 keV K-edge peak, `-44.8%` longitudinal ATCM DLP savings |
+| 14 | Longitudinal SQLite QA CUSUM & Multi-Procedure PSD | PASS | Tube aging onset (Session 18) flagged by Session 20; 3-stage cranial PSD `15.8 Gy` vs `12.7 Gy` repair-weighted |
 
 ---
 

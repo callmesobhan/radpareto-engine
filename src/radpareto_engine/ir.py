@@ -42,8 +42,8 @@ class ProvenanceRecord(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str = Field(default="1.0.0")
-    engine_version: str = Field(default="0.1.0")
+    schema_version: str = Field(default="1.1.0")
+    engine_version: str = Field(default="0.2.0")
     artifact_kind: Literal[
         "observed_dicom",
         "phantom_metrology",
@@ -51,6 +51,8 @@ class ProvenanceRecord(BaseModel):
         "pareto_solution",
         "fleet_audit",
         "sobol_uq",
+        "scanner_calibration",
+        "qa_drift_audit",
     ]
     input_sha256: str = Field(min_length=64, max_length=64)
     output_sha256: str = Field(min_length=64, max_length=64)
@@ -287,3 +289,45 @@ class ParetoPoint(BaseModel):
     is_pareto_optimal: bool = False
     hardware_utilization_frac: float = Field(ge=0.0)
     anode_heat_mhu: float = Field(ge=0.0)
+
+
+class VMISpec(BaseModel):
+    """Photon-Counting CT (PCCT) / Dual-Energy Virtual Monoenergetic Image (VMI) specification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    vmi_kev: float = Field(default=65.0, ge=40.0, le=140.0)
+    is_photon_counting: bool = Field(default=True)
+    ultra_high_res_mode: bool = Field(default=False)
+    detector_pixel_pitch_mm: float = Field(default=0.4, ge=0.15, le=1.2)
+
+
+class ScannerCalibrationModel(BaseModel):
+    """Empirically fitted TG-233 scanner surrogate calibrated from measured phantom scans."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scanner_name: str = Field(min_length=1)
+    vendor: CTVendor = CTVendor.GENERIC
+    n_calibration_scans: int = Field(ge=2)
+    base_f50_mm_inv: float = Field(gt=0.05, le=2.5)
+    ir_blur_low_contrast_slope: float = Field(ge=0.0, le=0.95)
+    base_noise_coeff_hu_sqrt_mgy: float = Field(gt=0.1, le=500.0)
+    ir_noise_reduction_slope: float = Field(ge=0.0, le=0.95)
+    f_peak_fbp_mm_inv: float = Field(gt=0.05, le=1.5)
+    f_peak_ir_shift_mm_inv: float = Field(ge=-0.2, le=0.8)
+    r2_noise_fit: float = Field(le=1.0)
+    r2_f50_fit: float = Field(le=1.0)
+    rms_dprime_error: float = Field(ge=0.0)
+    provenance: ProvenanceRecord
+
+
+class MultiProcedureSession(BaseModel):
+    """Single staged interventional fluoroscopy procedure for longitudinal PSD accumulation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str = Field(min_length=1)
+    day_offset: float = Field(ge=0.0, description="Days elapsed since index procedure (day 0).")
+    events: list[FluoroIrradiationEvent] = Field(min_length=1)
+    geometry: Literal["torso", "head"] = "torso"

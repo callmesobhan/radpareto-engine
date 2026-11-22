@@ -29,6 +29,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from radpareto_engine import __version__
 from radpareto_engine.dicom_io import read_ct_dicom, read_rdsr_dicom, write_rdsr_dicom
 from radpareto_engine.dosimetry_rdsr import (
+    compute_cumulative_multiprocedure_psd,
     compute_fluoro_3d_psd,
     ssde_conversion_factor,
 )
@@ -37,17 +38,27 @@ from radpareto_engine.harness.agent_orchestrator import (
     compute_detectability_phase_map,
     save_audit_dossier,
 )
+from radpareto_engine.harness.qa_drift_tracker import simulate_longitudinal_qa_benchmark
 from radpareto_engine.ir import (
     ClinicalTaskSpec,
     CTProtocolSpec,
+    CTVendor,
     FluoroIrradiationEvent,
+    MultiProcedureSession,
     ReconMode,
     TubeHardwareLimits,
 )
 from radpareto_engine.pareto_optimizer import (
     evaluate_protocol_operating_point,
     invert_min_dose_for_dprime,
+    optimize_longitudinal_atcm_profile,
+    solve_multitask_pareto_frontier,
     solve_pareto_frontier,
+    sweep_vmi_energy_curve,
+)
+from radpareto_engine.scanner_calibration import (
+    fit_scanner_calibration_from_phantoms,
+    predict_calibrated_dprime,
 )
 from radpareto_engine.sobol_sensitivity import (
     run_ct_detectability_sobol,
@@ -242,9 +253,7 @@ def generate_fig1_tg233_metrology() -> dict[str, Any]:
     dp_hir = compute_detectability_dprime(f_grid, ttf_mbir_lo.ttf, nps_hir_interp, task)
 
     fig = plt.figure(figsize=(13.2, 9.6))
-    gs = GridSpec(
-        2, 2, figure=fig, hspace=0.34, wspace=0.27, left=0.075, right=0.96, top=0.93, bottom=0.09
-    )
+    gs = GridSpec(2, 2, figure=fig, hspace=0.34, wspace=0.27, left=0.075, right=0.96, top=0.93, bottom=0.09)
 
     # Panel a: Axial CT phantom slice + ROIs + physical scalebar
     ax_a = fig.add_subplot(gs[0, 0])
@@ -252,9 +261,7 @@ def generate_fig1_tg233_metrology() -> dict[str, Any]:
     cy, cx = spec_hir.insert_center_px
     r_px = spec_hir.insert_radius_mm / spec_hir.pixel_spacing_mm
     ax_a.add_patch(
-        patches.Circle(
-            (cx, cy), r_px * 1.15, fill=False, edgecolor=OI["vermilion"], lw=1.8, ls="--"
-        )
+        patches.Circle((cx, cy), r_px * 1.15, fill=False, edgecolor=OI["vermilion"], lw=1.8, ls="--")
     )
     half = spec_hir.background_roi_size_px / 2.0
     for by, bx in spec_hir.background_roi_centers_px:
@@ -345,8 +352,7 @@ def generate_fig1_tg233_metrology() -> dict[str, Any]:
         color=OI["orange"],
         lw=2.2,
         label=(
-            f"Hybrid IR ($f_{{peak}}$={nps_hir.f_peak_mm_inv:.2f}, "
-            f"$\\sigma$={nps_hir.noise_std_hu:.1f} HU)"
+            f"Hybrid IR ($f_{{peak}}$={nps_hir.f_peak_mm_inv:.2f}, $\\sigma$={nps_hir.noise_std_hu:.1f} HU)"
         ),
     )
     ax_c.plot(
@@ -522,9 +528,7 @@ def generate_fig2_pareto_frontier() -> dict[str, Any]:
         lw=1.4,
         label="120 kVp mA Ceiling (720 mA)",
     )
-    ax_a.axhline(
-        3.0, color=OI["charcoal"], ls="--", lw=1.4, label="Clinical Guardrail ($d'_{min}=3.0$)"
-    )
+    ax_a.axhline(3.0, color=OI["charcoal"], ls="--", lw=1.4, label="Clinical Guardrail ($d'_{min}=3.0$)")
     ax_a.text(
         30.0,
         0.75,
@@ -799,9 +803,7 @@ def generate_fig3_fluoro_psd() -> dict[str, Any]:
     ax_a.set_xlabel("Patient Surface Azimuth (deg: RAO < 0, Posterior = 0, LAO > 0)")
     ax_a.set_ylabel("Longitudinal Torso Position $z$ (cm)")
     ax_a.set_title("Unwrapped Posterior Entrance Skin Dose Map (RDSR)")
-    ax_a.legend(
-        loc="upper left", fontsize=8.5, facecolor="#1A1A1A", labelcolor="white", framealpha=0.82
-    )
+    ax_a.legend(loc="upper left", fontsize=8.5, facecolor="#1A1A1A", labelcolor="white", framealpha=0.82)
     _add_panel_label(ax_a, "a")
 
     # Panel b: 3D ellipsoidal torso surface visualization
@@ -815,9 +817,7 @@ def generate_fig3_fluoro_psd() -> dict[str, Any]:
     DD = d_sub[::2, ::2]
     norm = mpl.colors.Normalize(vmin=0.0, vmax=max(5.8, psd.peak_skin_dose_gy * 1.05))
     facecolors = plt.get_cmap("inferno")(norm(DD))
-    ax_b.plot_surface(
-        XX, YY, ZZ, facecolors=facecolors, rstride=1, cstride=1, shade=False, antialiased=True
-    )
+    ax_b.plot_surface(XX, YY, ZZ, facecolors=facecolors, rstride=1, cstride=1, shade=False, antialiased=True)
     ax_b.view_init(elev=18, azim=-115)
     ax_b.set_xlabel("Left-Right (cm)", fontsize=8.8, labelpad=4)
     ax_b.set_ylabel("Ant-Post (cm)", fontsize=8.8, labelpad=4)
@@ -871,9 +871,7 @@ def generate_fig4_fleet_audit() -> dict[str, Any]:
     )
 
     items = dossier.items
-    labels = [
-        f"{it.protocol_id}\n({it.vendor.upper()}, $D_w$={it.target_d_w_cm:.0f} cm)" for it in items
-    ]
+    labels = [f"{it.protocol_id}\n({it.vendor.upper()}, $D_w$={it.target_d_w_cm:.0f} cm)" for it in items]
     y_pos = np.arange(len(items))
     base_ctdi = np.array([it.baseline_point.ctdi_vol_mgy for it in items])
     opt_ctdi = np.array([it.proposed_point.ctdi_vol_mgy for it in items])
@@ -945,9 +943,7 @@ def generate_fig4_fleet_audit() -> dict[str, Any]:
     ax_b = fig.add_subplot(gs[0, 1])
     _style_axis(ax_b)
     ax_b.axvspan(0.0, 1.0, color="#FADBD8", alpha=0.38, zorder=1)
-    ax_b.axvline(
-        1.0, color=OI["charcoal"], ls="--", lw=1.6, label="Hard Guardrail ($d' = d'_{min}$)"
-    )
+    ax_b.axvline(1.0, color=OI["charcoal"], ls="--", lw=1.6, label="Hard Guardrail ($d' = d'_{min}$)")
 
     for idx in range(len(items)):
         ax_b.annotate(
@@ -962,9 +958,7 @@ def generate_fig4_fleet_audit() -> dict[str, Any]:
                 "shrinkB": 6,
             },
         )
-    ax_b.scatter(
-        base_ratio, y_pos, color=OI["vermilion"], s=75, zorder=5, label="Baseline $d' / d'_{min}$"
-    )
+    ax_b.scatter(base_ratio, y_pos, color=OI["vermilion"], s=75, zorder=5, label="Baseline $d' / d'_{min}$")
     ax_b.scatter(
         opt_ratio,
         y_pos,
@@ -1094,15 +1088,11 @@ def generate_fig5_sobol_and_phase() -> dict[str, Any]:
     ax_a.invert_yaxis()
     ax_a.set_xlim(0.0, max(float(np.max(st_vals)) * 1.32, 0.75))
     ax_a.set_xlabel("Sobol' Variance-Based Sensitivity Index (95% CI)")
-    ax_a.set_title(
-        f"Global QMC Sobol' Sensitivity of CT $d'$ ($N_{{eval}}$={sobol_ct.total_evaluations})"
-    )
+    ax_a.set_title(f"Global QMC Sobol' Sensitivity of CT $d'$ ($N_{{eval}}$={sobol_ct.total_evaluations})")
     ax_a.legend(loc="lower right", fontsize=8.4)
 
     # Compact box summarizing fluoroscopy PSD Sobol' top drivers
-    top_fl = sorted(sobol_fluoro.parameter_names, key=lambda k: sobol_fluoro.st[k], reverse=True)[
-        :3
-    ]
+    top_fl = sorted(sobol_fluoro.parameter_names, key=lambda k: sobol_fluoro.st[k], reverse=True)[:3]
     fl_lines = ["Fluoro PSD Top $S_T$ Drivers:"] + [
         f"• {k.replace('_', ' ')}: $S_T$={sobol_fluoro.st[k]:.2f}" for k in top_fl
     ]
@@ -1251,9 +1241,7 @@ def generate_fig6_validation_calibration() -> dict[str, Any]:
     )
 
     fig = plt.figure(figsize=(13.6, 9.4))
-    gs = GridSpec(
-        2, 2, figure=fig, hspace=0.33, wspace=0.26, left=0.075, right=0.96, top=0.93, bottom=0.09
-    )
+    gs = GridSpec(2, 2, figure=fig, hspace=0.33, wspace=0.26, left=0.075, right=0.96, top=0.93, bottom=0.09)
 
     # Panel a: Public MIT CT_small.dcm + AAPM TG-220 contour & scalebar
     ax_a = fig.add_subplot(gs[0, 0])
@@ -1316,9 +1304,7 @@ def generate_fig6_validation_calibration() -> dict[str, Any]:
         ls="--",
         label="Body 16 cm Phantom (AAPM TG-204)",
     )
-    ax_b.plot(
-        dw_head, f16_head, color=OI["vermilion"], lw=2.3, label="Head 16 cm Phantom (AAPM TG-293)"
-    )
+    ax_b.plot(dw_head, f16_head, color=OI["vermilion"], lw=2.3, label="Head 16 cm Phantom (AAPM TG-293)")
 
     # Plot public CT sample on head curve + fleet habitus anchors on 32 cm body curve
     pub_dw = parsed_pub.d_w_result.d_w_cm
@@ -1389,9 +1375,7 @@ def generate_fig6_validation_calibration() -> dict[str, Any]:
     ax_c.set_xlim(0.0, lim_max)
     ax_c.set_ylim(0.0, lim_max)
     ax_c.set_xlabel("Detrended Image Variance, $\\sigma^2$ (HU$^2$)")
-    ax_c.set_ylabel(
-        "Discrete 2D NPS Integral, $\\sum \\mathrm{NPS}\\,\\Delta f_x \\Delta f_y$ (HU$^2$)"
-    )
+    ax_c.set_ylabel("Discrete 2D NPS Integral, $\\sum \\mathrm{NPS}\\,\\Delta f_x \\Delta f_y$ (HU$^2$)")
     ax_c.set_title("Formal Parseval's Theorem Invariant Verification")
     ax_c.legend(loc="lower right", fontsize=8.3)
     _add_panel_label(ax_c, "c")
@@ -1407,9 +1391,7 @@ def generate_fig6_validation_calibration() -> dict[str, Any]:
         lw=1.4,
         label="Closed-Form Linear Theory ($d' \\propto C$)",
     )
-    ax_d.scatter(
-        contrasts, d_npwe_meas_arr, color=OI["blue"], s=56, zorder=5, label="Computed $d'_{NPWE}$"
-    )
+    ax_d.scatter(contrasts, d_npwe_meas_arr, color=OI["blue"], s=56, zorder=5, label="Computed $d'_{NPWE}$")
     ax_d.plot(
         contrasts,
         d_cho_meas_arr,
@@ -1450,6 +1432,464 @@ def generate_fig6_validation_calibration() -> dict[str, Any]:
     }
 
 
+def generate_fig7_multitask_vmi_calibration() -> dict[str, Any]:
+    """Fig 7: Empirical Phantom Calibration + Joint Multi-Task Pareto + PCCT vs EID VMI Sweep."""
+    liver_task = ClinicalTaskSpec(
+        name="5mm_low_contrast_liver_lesion",
+        diameter_mm=5.0,
+        contrast_hu=22.0,
+        material_type="soft_tissue",
+        d_prime_target=3.5,
+    )
+    vessel_task = ClinicalTaskSpec(
+        name="2mm_iodinated_vessel",
+        diameter_mm=2.0,
+        contrast_hu=115.0,
+        material_type="iodine",
+        edge_profile_exponent=0.5,
+        d_prime_target=6.0,
+    )
+
+    # Panel a data: Empirical scanner calibration from 6 measured phantom runs
+    cal_cfgs = [
+        (5.0, 450.0, ReconMode.FBP, 0.0, 11),
+        (12.0, 450.0, ReconMode.FBP, 0.0, 12),
+        (18.0, 450.0, ReconMode.FBP, 0.0, 13),
+        (7.0, 120.0, ReconMode.HYBRID_IR, 0.45, 14),
+        (11.0, 50.0, ReconMode.HYBRID_IR, 0.70, 15),
+        (16.0, 50.0, ReconMode.HYBRID_IR, 0.85, 16),
+    ]
+    runs = [
+        generate_tg233_phantom_volume(
+            size_px=192,
+            n_slices=8,
+            ctdi_vol_mgy=ctdi,
+            insert_contrast_hu=c_hu,
+            recon_mode=rmode,
+            ir_strength=ir_s,
+            seed=sd,
+        )
+        for ctdi, c_hu, rmode, ir_s, sd in cal_cfgs
+    ]
+    cal_model = fit_scanner_calibration_from_phantoms(
+        scanner_name="Siemens SOMATOM Force",
+        phantom_runs=runs,
+        reference_task=liver_task,
+        vendor=CTVendor.SIEMENS,
+    )
+    meas_dps = [evaluate_tg233_phantom(v, s, liver_task).d_prime_npwe for v, s in runs]
+    pred_dps = [
+        predict_calibrated_dprime(
+            calibration=cal_model,
+            ctdi_vol_mgy=s.ctdi_vol_mgy,
+            ir_strength=0.0 if s.recon_mode == ReconMode.FBP else s.ir_strength,
+            task=liver_task,
+            edge_contrast_hu=s.nominal_contrast_hu,
+        ).predicted_d_prime_npwe
+        for _, s in runs
+    ]
+
+    # Panel b data: Joint Multi-Task Pareto Frontier (Liver + Iodinated Vessel)
+    base_proto = CTProtocolSpec(
+        protocol_id="MT_PARETO",
+        scanner_name="Canonical_CT",
+        slice_thickness_mm=3.0,
+        hardware_limits=TubeHardwareLimits(max_tube_current_ma=1000.0, max_power_kw=120.0),
+    )
+    mt_res = solve_multitask_pareto_frontier(
+        base_protocol=base_proto,
+        d_w_cm=29.0,
+        tasks=[liver_task, vessel_task],
+        ctdi_grid_mgy=list(np.geomspace(1.5, 24.0, 14)),
+    )
+
+    # Panel c data: PCCT vs EID-DECT Virtual Monoenergetic (40-140 keV) sweep
+    vmi_proto = base_proto.model_copy(update={"slice_thickness_mm": 1.25})
+    kev_grid = [40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0, 80.0, 95.0, 110.0, 125.0, 140.0]
+    pcct_std = sweep_vmi_energy_curve(
+        protocol=vmi_proto,
+        d_w_cm=28.0,
+        task=vessel_task,
+        ctdi_vol_mgy=6.0,
+        kev_grid=kev_grid,
+        is_photon_counting=True,
+        ultra_high_res_mode=False,
+    )
+    pcct_uhr = sweep_vmi_energy_curve(
+        protocol=vmi_proto,
+        d_w_cm=28.0,
+        task=vessel_task,
+        ctdi_vol_mgy=6.0,
+        kev_grid=kev_grid,
+        is_photon_counting=True,
+        ultra_high_res_mode=True,
+    )
+    eid_dect = sweep_vmi_energy_curve(
+        protocol=vmi_proto,
+        d_w_cm=28.0,
+        task=vessel_task,
+        ctdi_vol_mgy=6.0,
+        kev_grid=kev_grid,
+        is_photon_counting=False,
+        ultra_high_res_mode=False,
+    )
+
+    fig = plt.figure(figsize=(15.4, 5.4))
+    gs = GridSpec(1, 3, figure=fig, wspace=0.28, left=0.055, right=0.98, top=0.88, bottom=0.16)
+
+    # Panel a: Empirical scanner calibration
+    ax_a = fig.add_subplot(gs[0, 0])
+    _style_axis(ax_a)
+    mx = max(max(meas_dps), max(pred_dps)) * 1.12
+    mn = min(min(meas_dps), min(pred_dps)) * 0.85
+    ax_a.plot([mn, mx], [mn, mx], color=OI["charcoal"], ls="--", lw=1.3, label="Identity ($y=x$)")
+    ax_a.scatter(
+        meas_dps,
+        pred_dps,
+        color=OI["blue"],
+        s=70,
+        edgecolors="#111111",
+        linewidths=0.6,
+        zorder=5,
+        label="Commissioned Phantoms (n=6)",
+    )
+    ax_a.text(
+        0.05,
+        0.74,
+        (
+            f"$R^2$ (Noise) = {cal_model.r2_noise_fit:.3f}\n"
+            f"$R^2$ (TTF $f_{{50}}$) = {cal_model.r2_f50_fit:.3f}\n"
+            f"RMS $d'$ Err = {cal_model.rms_dprime_error:.2f}"
+        ),
+        transform=ax_a.transAxes,
+        fontsize=8.3,
+        bbox={"boxstyle": "round,pad=0.3", "facecolor": "#F4F6FA", "edgecolor": OI["blue"]},
+    )
+    ax_a.set_xlim(mn, mx)
+    ax_a.set_ylim(mn, mx)
+    ax_a.set_xlabel("Measured Phantom $d'_{NPWE}$")
+    ax_a.set_ylabel("Calibrated Surrogate $d'_{NPWE}$")
+    ax_a.set_title("Empirical Phantom-to-Surrogate Fit")
+    ax_a.legend(loc="lower right", fontsize=8.0)
+    _add_panel_label(ax_a, "a")
+
+    # Panel b: Joint Multi-Task Pareto Frontier
+    ax_b = fig.add_subplot(gs[0, 1])
+    _style_axis(ax_b)
+    dom_x = [p.ctdi_vol_mgy for p in mt_res.all_feasible_points if not p.is_pareto_optimal]
+    dom_y = [p.min_guardrail_ratio for p in mt_res.all_feasible_points if not p.is_pareto_optimal]
+    ax_b.scatter(dom_x, dom_y, color=OI["gray"], alpha=0.22, s=16, label="Dominated Candidates")
+    fx = [p.ctdi_vol_mgy for p in mt_res.pareto_frontier]
+    fy = [p.min_guardrail_ratio for p in mt_res.pareto_frontier]
+    ax_b.plot(fx, fy, color=OI["green"], lw=2.4, marker="o", ms=5.0, label="Joint Multi-Task Frontier")
+    ax_b.axhline(
+        1.0, color=OI["charcoal"], ls="--", lw=1.4, label="Joint Guardrail ($\\min_k d'_k/d'_{k,min}=1$)"
+    )
+    if mt_res.best_compliant_point is not None:
+        bc = mt_res.best_compliant_point
+        ax_b.scatter(
+            [bc.ctdi_vol_mgy],
+            [bc.min_guardrail_ratio],
+            color=OI["vermilion"],
+            marker="*",
+            s=180,
+            zorder=7,
+            edgecolors="#111111",
+            linewidths=0.6,
+            label=f"Min Joint CTDI = {bc.ctdi_vol_mgy:.2f} mGy",
+        )
+    ax_b.set_xlabel("CTDI$_{vol}$ (mGy)")
+    ax_b.set_ylabel("Binding Task Ratio, $\\min_k (d'_k / d'_{k,min})$")
+    ax_b.set_title("Joint Multi-Task Pareto (Liver + CTA)")
+    ax_b.legend(loc="lower right", fontsize=7.8)
+    _add_panel_label(ax_b, "b")
+
+    # Panel c: PCCT vs EID-DECT VMI Energy Sweep (40-140 keV)
+    ax_c = fig.add_subplot(gs[0, 2])
+    _style_axis(ax_c)
+    ax_c.plot(
+        [p.vmi_kev for p in pcct_uhr],
+        [p.d_prime_npwe for p in pcct_uhr],
+        color=OI["green"],
+        lw=2.4,
+        marker="o",
+        ms=4.5,
+        label="PCCT VMI + UHR Mode",
+    )
+    ax_c.plot(
+        [p.vmi_kev for p in pcct_std],
+        [p.d_prime_npwe for p in pcct_std],
+        color=OI["blue"],
+        lw=2.2,
+        ls="--",
+        marker="s",
+        ms=4.0,
+        label="PCCT Standard VMI",
+    )
+    ax_c.plot(
+        [p.vmi_kev for p in eid_dect],
+        [p.d_prime_npwe for p in eid_dect],
+        color=OI["vermilion"],
+        lw=2.2,
+        ls=":",
+        marker="^",
+        ms=4.5,
+        label="EID Dual-Energy VMI",
+    )
+    best_pcct = max(pcct_uhr, key=lambda p: p.d_prime_npwe)
+    ax_c.axvline(best_pcct.vmi_kev, color=OI["green"], ls=":", lw=1.2, alpha=0.8)
+    ax_c.annotate(
+        f"Optimal {best_pcct.vmi_kev:.0f} keV\n($d'$={best_pcct.d_prime_npwe:.1f})",
+        xy=(best_pcct.vmi_kev, best_pcct.d_prime_npwe),
+        xytext=(best_pcct.vmi_kev + 22.0, best_pcct.d_prime_npwe * 0.88),
+        fontsize=8.2,
+        fontweight="bold",
+        color=OI["green"],
+        arrowprops={"arrowstyle": "->", "color": OI["green"], "lw": 1.3},
+    )
+    ax_c.set_xlim(36.0, 144.0)
+    ax_c.set_xlabel("Virtual Monoenergetic Energy (keV)")
+    ax_c.set_ylabel("Iodine Vessel Detectability, $d'_{NPWE}$")
+    ax_c.set_title("PCCT vs. EID-DECT Spectral VMI Sweep")
+    ax_c.legend(loc="upper right", fontsize=8.0)
+    _add_panel_label(ax_c, "c")
+
+    _add_provenance_footer(
+        fig,
+        mt_res.provenance.output_sha256[:12],
+        "v0.2.0 Empirical Calibration  |  Joint Multi-Task Pareto  |  PCCT / DECT VMI Spectral Model",
+    )
+    _save_fig(fig, "fig7_multitask_vmi_calibration")
+    return {
+        "calibration_r2_noise": cal_model.r2_noise_fit,
+        "calibration_r2_f50": cal_model.r2_f50_fit,
+        "multitask_best_ctdi_mgy": (
+            mt_res.best_compliant_point.ctdi_vol_mgy if mt_res.best_compliant_point else None
+        ),
+        "multitask_binding_task": (
+            mt_res.best_compliant_point.binding_task_name if mt_res.best_compliant_point else None
+        ),
+        "pcct_optimal_kev": best_pcct.vmi_kev,
+        "pcct_peak_d_prime": best_pcct.d_prime_npwe,
+    }
+
+
+def generate_fig8_qa_cusum_and_multiprocedure_psd() -> dict[str, Any]:
+    """Fig 8: Longitudinal TG-233 QA CUSUM Drift Chart + Multi-Procedure Cumulative PSD."""
+    tracker, qa_rep = simulate_longitudinal_qa_benchmark(
+        scanner_name="Siemens SOMATOM Force", n_sessions=30, drift_onset_session=18, seed=42
+    )
+    tracker.close()
+    dp_cusum = qa_rep.metrics["d_prime_npwe"]
+    sessions_x = np.arange(1, qa_rep.n_sessions + 1)
+
+    # Multi-procedure staged neuro-interventional cranial PSD over 120 days
+    ev_stage = FluoroIrradiationEvent(
+        event_id="NEURO-COIL",
+        primary_angle_deg=15.0,
+        secondary_angle_deg=10.0,
+        reference_air_kerma_mgy=4200.0,
+        dose_area_product_gy_cm2=360.0,
+        beam_area_at_irp_cm2=95.0,
+        table_height_offset_mm=-15.0,
+        table_pad_transmission=0.80,
+        backscatter_factor=1.35,
+    )
+    ev_stage_oblique = FluoroIrradiationEvent(
+        event_id="NEURO-OBL",
+        primary_angle_deg=-5.0,
+        secondary_angle_deg=12.0,
+        reference_air_kerma_mgy=2800.0,
+        dose_area_product_gy_cm2=240.0,
+        beam_area_at_irp_cm2=95.0,
+        table_height_offset_mm=-15.0,
+        table_pad_transmission=0.80,
+        backscatter_factor=1.35,
+    )
+    staged_sessions = [
+        MultiProcedureSession(
+            session_id="Day 0 (Embolization #1)", day_offset=0.0, events=[ev_stage], geometry="head"
+        ),
+        MultiProcedureSession(
+            session_id="Day 45 (Staged #2)",
+            day_offset=45.0,
+            events=[ev_stage, ev_stage_oblique],
+            geometry="head",
+        ),
+        MultiProcedureSession(
+            session_id="Day 110 (Retreatment #3)",
+            day_offset=110.0,
+            events=[ev_stage],
+            geometry="head",
+        ),
+    ]
+    cum_steps_zero: list[float] = []
+    cum_steps_bio: list[float] = []
+    for k in range(1, len(staged_sessions) + 1):
+        res_k = compute_cumulative_multiprocedure_psd(
+            staged_sessions[:k],
+            geometry="head",
+            repair_half_life_days=180.0,
+            n_azimuth=90,
+            n_z=60,
+        )
+        cum_steps_zero.append(res_k.cumulative_psd_gy)
+        cum_steps_bio.append(res_k.biological_effective_psd_gy)
+
+    # Also evaluate longitudinal z-axis ATCM DLP savings
+    proto_atcm = CTProtocolSpec(
+        protocol_id="ATCM_OPT",
+        scanner_name="Canonical",
+        slice_thickness_mm=3.0,
+        hardware_limits=TubeHardwareLimits(max_tube_current_ma=1000.0, max_power_kw=120.0),
+    )
+    liver_t = ClinicalTaskSpec(name="5mm_liver", diameter_mm=5.0, contrast_hu=22.0, d_prime_target=3.5)
+    z_grid = list(np.linspace(0.0, 45.0, 10))
+    dw_prof = [23.5, 25.0, 26.8, 28.5, 30.2, 31.8, 33.0, 32.2, 30.5, 29.0]
+    atcm_opt = optimize_longitudinal_atcm_profile(
+        protocol=proto_atcm, z_cm=z_grid, d_w_profile_cm=dw_prof, task=liver_t
+    )
+    atcm_fix = optimize_longitudinal_atcm_profile(
+        protocol=proto_atcm,
+        z_cm=z_grid,
+        d_w_profile_cm=dw_prof,
+        task=liver_t,
+        atcm_strength_grid=[0.0],
+    )
+    dlp_savings_pct = 100.0 * (1.0 - atcm_opt.total_dlp_mgy_cm / atcm_fix.total_dlp_mgy_cm)
+
+    fig = plt.figure(figsize=(14.4, 5.8))
+    gs = GridSpec(1, 2, figure=fig, wspace=0.26, left=0.068, right=0.965, top=0.88, bottom=0.15)
+
+    # Panel a: Longitudinal QA Tabular CUSUM SPC chart
+    ax_a = fig.add_subplot(gs[0, 0])
+    _style_axis(ax_a)
+    ax_a.axvspan(1, qa_rep.n_baseline_sessions, color="#EBF5FB", alpha=0.55, label="Baseline Window (n=12)")
+    ax_a.plot(
+        sessions_x,
+        dp_cusum.cusum_pos,
+        color=OI["blue"],
+        lw=2.0,
+        marker="o",
+        ms=3.8,
+        label="Upper CUSUM $C^+_t$",
+    )
+    ax_a.plot(
+        sessions_x,
+        dp_cusum.cusum_neg,
+        color=OI["vermilion"],
+        lw=2.3,
+        marker="s",
+        ms=4.0,
+        label="Lower CUSUM $C^-_t$ ($d'$ Drop)",
+    )
+    ax_a.axhline(
+        dp_cusum.decision_limit_h,
+        color=OI["charcoal"],
+        ls="--",
+        lw=1.5,
+        label=f"SPC Decision Limit ($h={dp_cusum.decision_limit_h:.1f}$)",
+    )
+    ax_a.axvline(18, color=OI["orange"], ls=":", lw=1.5, label="Tube Aging Onset (Session 18)")
+    if dp_cusum.first_alert_index is not None:
+        alert_x = dp_cusum.first_alert_index + 1
+        alert_y = dp_cusum.cusum_neg[dp_cusum.first_alert_index]
+        ax_a.scatter(
+            [alert_x],
+            [alert_y],
+            color="#B03A2E",
+            marker="*",
+            s=190,
+            zorder=7,
+            edgecolors="#111111",
+            linewidths=0.6,
+        )
+        ax_a.annotate(
+            f"CUSUM Alert\nSession {alert_x}",
+            xy=(alert_x, alert_y),
+            xytext=(alert_x - 7.5, alert_y + 4.5),
+            fontsize=8.3,
+            fontweight="bold",
+            color="#922B21",
+            arrowprops={"arrowstyle": "->", "color": "#922B21", "lw": 1.3},
+        )
+    ax_a.set_xlim(0.5, 30.8)
+    ax_a.set_xlabel("Longitudinal Phantom QA Session Index")
+    ax_a.set_ylabel("Standardized CUSUM Statistic ($\\sigma$ units)")
+    ax_a.set_title("SQLite Longitudinal TG-233 QA Drift Monitor (CUSUM)")
+    ax_a.legend(loc="upper left", fontsize=7.9)
+    _add_panel_label(ax_a, "a")
+
+    # Panel b: Multi-procedure cumulative cranial PSD vs NCRP/ICRP/TJC thresholds
+    ax_b = fig.add_subplot(gs[0, 1])
+    _style_axis(ax_b)
+    x_st = np.arange(len(staged_sessions))
+    w = 0.34
+    ax_b.bar(
+        x_st - w / 2,
+        cum_steps_zero,
+        width=w,
+        color=OI["vermilion"],
+        alpha=0.88,
+        label="Strict Cumulative PSD (0-Decay TJC)",
+    )
+    ax_b.bar(
+        x_st + w / 2,
+        cum_steps_bio,
+        width=w,
+        color=OI["sky"],
+        alpha=0.90,
+        label="Repair-Weighted PSD ($t_{1/2}=180$ d)",
+    )
+    ax_b.axhline(5.0, color=OI["orange"], ls="--", lw=1.4, label="ICRP 120 Follow-up (5 Gy)")
+    ax_b.axhline(15.0, color="#922B21", ls="-.", lw=1.8, label="TJC Sentinel Threshold (15 Gy)")
+    for idx, (zv, bv) in enumerate(zip(cum_steps_zero, cum_steps_bio, strict=True)):
+        ax_b.text(
+            idx - w / 2,
+            zv + 0.30,
+            f"{zv:.1f} Gy",
+            ha="center",
+            va="bottom",
+            fontsize=8.1,
+            fontweight="bold",
+        )
+        ax_b.text(idx + w / 2, bv + 0.30, f"{bv:.1f} Gy", ha="center", va="bottom", fontsize=8.1)
+
+    ax_b.text(
+        0.97,
+        0.96,
+        f"Longitudinal ATCM $z$-Profile:\nDLP Savings = -{dlp_savings_pct:.1f}%",
+        transform=ax_b.transAxes,
+        va="top",
+        ha="right",
+        fontsize=8.1,
+        bbox={"boxstyle": "round,pad=0.3", "facecolor": "#F4F8F4", "edgecolor": OI["green"]},
+    )
+    ax_b.set_xticks(x_st)
+    ax_b.set_xticklabels([s.session_id for s in staged_sessions], fontsize=8.4)
+    ax_b.set_ylim(0.0, 22.8)
+    ax_b.set_ylabel("Cumulative Cranial Peak Skin Dose (Gy)")
+    ax_b.set_title("Multi-Procedure Cranial PSD Accumulation (120-Day Window)")
+    ax_b.legend(loc="upper left", fontsize=7.9)
+    _add_panel_label(ax_b, "b")
+
+    _add_provenance_footer(
+        fig,
+        qa_rep.provenance.output_sha256[:12],
+        "v0.2.0 Longitudinal CUSUM QA  |  TJC >= 15 Gy Multi-Procedure Cranial PSD & z-Axis ATCM",
+    )
+    _save_fig(fig, "fig8_qa_cusum_multiprocedure_psd")
+    return {
+        "qa_cusum_drift_detected": qa_rep.any_drift_detected,
+        "qa_dprime_first_alert_session": (
+            dp_cusum.first_alert_index + 1 if dp_cusum.first_alert_index is not None else None
+        ),
+        "multiprocedure_final_psd_gy": cum_steps_zero[-1],
+        "multiprocedure_bio_psd_gy": cum_steps_bio[-1],
+        "atcm_dlp_savings_pct": dlp_savings_pct,
+    }
+
+
 def main() -> None:
     _configure_matplotlib()
     RES_DIR.mkdir(parents=True, exist_ok=True)
@@ -1463,10 +1903,12 @@ def main() -> None:
         "fig4_fleet_audit": generate_fig4_fleet_audit(),
         "fig5_sobol_uq": generate_fig5_sobol_and_phase(),
         "fig6_validation": generate_fig6_validation_calibration(),
+        "fig7_multitask_vmi_calibration": generate_fig7_multitask_vmi_calibration(),
+        "fig8_qa_cusum_multiprocedure_psd": generate_fig8_qa_cusum_and_multiprocedure_psd(),
     }
     out_json = RES_DIR / "benchmark_summary.json"
     out_json.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print(f"Generated all 6 figures in {FIG_DIR} and benchmark summary in {out_json}")
+    print(f"Generated all 8 figures in {FIG_DIR} and benchmark summary in {out_json}")
 
 
 if __name__ == "__main__":

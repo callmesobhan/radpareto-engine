@@ -1,21 +1,25 @@
 """Zero-bloat JSON-RPC 2.0 stdio Model Context Protocol (MCP) server for radpareto-engine.
 
-Exposes 6 typed, provenance-gated medical physics tools:
+Exposes 8 typed, provenance-gated medical physics tools:
 1. radpareto_measure_tg233
 2. radpareto_compute_ssde_and_psd
 3. radpareto_solve_pareto_frontier
 4. radpareto_invert_min_dose_for_dprime
 5. radpareto_audit_protocol_fleet
 6. radpareto_run_sobol_sensitivity
+7. radpareto_solve_multitask_pareto
+8. radpareto_analyze_dicom_file
 """
 
 from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 from radpareto_engine import __version__
+from radpareto_engine.dicom_io import read_ct_dicom, read_rdsr_dicom
 from radpareto_engine.dosimetry_rdsr import (
     compute_fluoro_3d_psd,
     compute_ssde_and_organ_doses,
@@ -31,7 +35,9 @@ from radpareto_engine.ir import (
 )
 from radpareto_engine.pareto_optimizer import (
     invert_min_dose_for_dprime,
+    solve_multitask_pareto_frontier,
     solve_pareto_frontier,
+    sweep_vmi_energy_curve,
 )
 from radpareto_engine.sobol_sensitivity import (
     run_ct_detectability_sobol,
@@ -179,6 +185,52 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "name": "radpareto_solve_multitask_pareto",
+            "description": (
+                "Solve joint multi-task CT Pareto frontier across simultaneous clinical tasks "
+                "(e.g. liver lesion + iodinated vessel) with optional PCCT/DECT VMI keV sweep."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "d_w_cm": {"type": "number", "default": 29.0},
+                    "include_vmi_sweep": {"type": "boolean", "default": False},
+                    "is_photon_counting": {"type": "boolean", "default": True},
+                    "max_tube_current_ma": {"type": "number", "default": 900.0},
+                },
+            },
+        },
+        {
+            "name": "radpareto_analyze_dicom_file",
+            "description": (
+                "Ingest a real local CT Image DICOM (.dcm) for AAPM TG-220 D_w / SSDE or a "
+                "DICOM RDSR (.dcm) for calibrated 3D fluoroscopy Peak Skin Dose with SHA-256 provenance."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "required": ["file_path"],
+                "properties": {
+                    "file_path": {"type": "string"},
+                    "modality": {
+                        "type": "string",
+                        "enum": ["ct", "rdsr"],
+                        "default": "ct",
+                    },
+                    "geometry": {
+                        "type": "string",
+                        "enum": ["torso", "head"],
+                        "default": "torso",
+                    },
+                    "vendor_dialect": {
+                        "type": "string",
+                        "enum": ["standard", "siemens_artis", "philips_azurion", "ge_innova"],
+                        "default": "standard",
+                    },
+                    "require_calibration": {"type": "boolean", "default": True},
+                },
+            },
+        },
     ]
 
 
@@ -193,6 +245,8 @@ class MCPServer:
             "radpareto_invert_min_dose_for_dprime": self._tool_invert_min_dose_for_dprime,
             "radpareto_audit_protocol_fleet": self._tool_audit_protocol_fleet,
             "radpareto_run_sobol_sensitivity": self._tool_run_sobol_sensitivity,
+            "radpareto_solve_multitask_pareto": self._tool_solve_multitask_pareto,
+            "radpareto_analyze_dicom_file": self._tool_analyze_dicom_file,
         }
 
     def _tool_measure_tg233(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -364,6 +418,112 @@ class MCPServer:
         else:
             res = run_ct_detectability_sobol(n_base_power_of_2=n_base, seed=seed)
         return summarize_sobol_dict(res)
+
+    def _tool_solve_multitask_pareto(self, args: dict[str, Any]) -> dict[str, Any]:
+        dw = float(args.get("d_w_cm", 29.0))
+        proto = CTProtocolSpec(
+            protocol_id="MCP_MULTITASK",
+            scanner_name="MCP_MultiTask_CT",
+            hardware_limits=TubeHardwareLimits(
+                max_tube_current_ma=float(args.get("max_tube_current_ma", 900.0)),
+                max_power_kw=120.0,
+            ),
+        )
+        tasks = [
+            ClinicalTaskSpec(
+                name="5mm_low_contrast_liver_lesion",
+                diameter_mm=5.0,
+                contrast_hu=22.0,
+                material_type="soft_tissue",
+                d_prime_target=3.5,
+            ),
+            ClinicalTaskSpec(
+                name="2mm_iodinated_vessel",
+                diameter_mm=2.0,
+                contrast_hu=115.0,
+                material_type="iodine",
+                edge_profile_exponent=0.5,
+                d_prime_target=6.0,
+            ),
+        ]
+        res = solve_multitask_pareto_frontier(
+            base_protocol=proto,
+            d_w_cm=dw,
+            tasks=tasks,
+            ctdi_grid_mgy=[2.0, 4.0, 6.0, 9.0, 13.0, 18.0, 24.0],
+        )
+        bc = res.best_compliant_point
+        payload: dict[str, Any] = {
+            "d_w_cm": res.d_w_cm,
+            "task_names": res.task_names,
+            "n_pareto_optimal": len(res.pareto_frontier),
+            "best_compliant": (
+                {
+                    "protocol_id": bc.protocol_id,
+                    "kvp": bc.kvp,
+                    "ctdi_vol_mgy": bc.ctdi_vol_mgy,
+                    "ssde_mgy": bc.ssde_mgy,
+                    "binding_task_name": bc.binding_task_name,
+                    "task_d_primes": bc.task_d_primes,
+                }
+                if bc is not None
+                else None
+            ),
+            "provenance": res.provenance.model_dump(),
+        }
+        if args.get("include_vmi_sweep", False):
+            curve = sweep_vmi_energy_curve(
+                protocol=proto,
+                d_w_cm=dw,
+                task=tasks[1],
+                ctdi_vol_mgy=bc.ctdi_vol_mgy if bc else 8.0,
+                is_photon_counting=bool(args.get("is_photon_counting", True)),
+            )
+            payload["vmi_sweep"] = [
+                {"vmi_kev": p.vmi_kev, "d_prime_npwe": p.d_prime_npwe, "noise_std_hu": p.noise_std_hu}
+                for p in curve
+            ]
+        return payload
+
+    def _tool_analyze_dicom_file(self, args: dict[str, Any]) -> dict[str, Any]:
+        file_path = Path(str(args["file_path"])).expanduser().resolve()
+        if not file_path.is_file():
+            raise FileNotFoundError(f"DICOM file not found: {file_path}")
+
+        modality = str(args.get("modality", "ct"))
+        if modality == "rdsr":
+            events, rdsr_prov = read_rdsr_dicom(
+                file_path, vendor_dialect=str(args.get("vendor_dialect", "standard"))
+            )
+            psd = compute_fluoro_3d_psd(
+                events,
+                geometry=args.get("geometry", "torso"),
+                n_azimuth=90,
+                n_z=60,
+                require_calibration=bool(args.get("require_calibration", True)),
+            )
+            return {
+                "modality": "rdsr",
+                "file_path": str(file_path),
+                "n_events": psd.n_events,
+                "peak_skin_dose_gy": psd.peak_skin_dose_gy,
+                "clinical_tier": psd.clinical_tier,
+                "rdsr_provenance": rdsr_prov.model_dump(),
+                "provenance": psd.provenance.model_dump(),
+            }
+
+        parsed = read_ct_dicom(file_path, compute_dw=True)
+        return {
+            "modality": "ct",
+            "file_path": str(file_path),
+            "shape": list(parsed.hu_array.shape),
+            "pixel_spacing_mm": list(parsed.pixel_spacing_mm),
+            "kvp": parsed.kvp,
+            "manufacturer": parsed.manufacturer,
+            "d_w_cm": parsed.d_w_result.d_w_cm if parsed.d_w_result else None,
+            "d_eff_cm": parsed.d_w_result.d_eff_cm if parsed.d_w_result else None,
+            "provenance": parsed.provenance.model_dump(),
+        }
 
     def handle_request(self, request: dict[str, Any]) -> dict[str, Any] | None:
         """Process a single JSON-RPC 2.0 MCP message and return response dict (or None)."""

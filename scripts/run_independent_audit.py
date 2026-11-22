@@ -17,32 +17,43 @@ import numpy as np
 
 from radpareto_engine import __version__
 from radpareto_engine.dicom_io import read_ct_dicom, read_rdsr_dicom, write_rdsr_dicom
-from radpareto_engine.dosimetry_rdsr import compute_fluoro_3d_psd, ssde_conversion_factor
+from radpareto_engine.dosimetry_rdsr import (
+    compute_cumulative_multiprocedure_psd,
+    compute_fluoro_3d_psd,
+    ssde_conversion_factor,
+)
 from radpareto_engine.harness.agent_orchestrator import audit_and_optimize_protocol_fleet
 from radpareto_engine.harness.mcp_server import MCPServer
+from radpareto_engine.harness.qa_drift_tracker import simulate_longitudinal_qa_benchmark
 from radpareto_engine.ir import (
     AbstentionCode,
     AbstentionError,
     ClinicalTaskSpec,
     CTProtocolSpec,
     FluoroIrradiationEvent,
+    MultiProcedureSession,
     ReconMode,
     TubeHardwareLimits,
 )
 from radpareto_engine.pareto_optimizer import (
     invert_min_dose_for_dprime,
+    optimize_longitudinal_atcm_profile,
+    solve_multitask_pareto_frontier,
     solve_pareto_frontier,
+    sweep_vmi_energy_curve,
 )
 from radpareto_engine.provenance import (
     assert_parseval_invariant,
     assert_physical_contrast_snr,
     sha256_file,
 )
+from radpareto_engine.scanner_calibration import fit_scanner_calibration_from_phantoms
 from radpareto_engine.sobol_sensitivity import SobolParameterSpec, run_saltelli_jansen_sobol
 from radpareto_engine.tg233_metrology import (
     compute_detectability_dprime,
     generate_tg233_phantom_volume,
     measure_nps_2d_3d,
+    measure_nps_3d_volumetric,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -57,9 +68,7 @@ def run_audit() -> dict[str, Any]:
     # 1. Public MIT CT sample integrity + TG-220 D_w
     sample_dir = REPO_ROOT / "data" / "public_ct_sample"
     manifest = json.loads((sample_dir / "MANIFEST.json").read_text(encoding="utf-8"))
-    checksums_ok = all(
-        sha256_file(sample_dir / f["filename"]) == f["sha256"] for f in manifest["files"]
-    )
+    checksums_ok = all(sha256_file(sample_dir / f["filename"]) == f["sha256"] for f in manifest["files"])
     parsed_ct = read_ct_dicom(sample_dir / "CT_small.dcm", compute_dw=True)
     record(
         "public_mit_dicom_integrity",
@@ -151,9 +160,7 @@ def run_audit() -> dict[str, Any]:
                 hardware_limits=TubeHardwareLimits(max_tube_current_ma=220.0, max_power_kw=30.0),
             ),
             d_w_cm=42.0,
-            task=ClinicalTaskSpec(
-                name="hard", diameter_mm=5.0, contrast_hu=15.0, d_prime_target=4.5
-            ),
+            task=ClinicalTaskSpec(name="hard", diameter_mm=5.0, contrast_hu=15.0, d_prime_target=4.5),
         )
     except AbstentionError as exc:
         fired_codes.add(exc.code.value)
@@ -263,14 +270,14 @@ def run_audit() -> dict[str, Any]:
         {"n_events": len(rdsr_events), "calibration_verified": rdsr_prov.calibration_verified},
     )
 
-    # 9. Autonomous fleet audit & Critic-Verifier Gate + MCP conformance
+    # 9. Autonomous fleet audit & Critic-Verifier Gate + MCP conformance (8 tools)
     dossier = audit_and_optimize_protocol_fleet()
     mcp = MCPServer()
     tools_resp = mcp.handle_request({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     n_tools = len(tools_resp["result"]["tools"]) if tools_resp else 0
     record(
         "fleet_critic_gate_and_mcp_server",
-        dossier.critic_approved_count == dossier.total_protocols and n_tools == 6,
+        dossier.critic_approved_count == dossier.total_protocols and n_tools == 8,
         {
             "critic_approved": f"{dossier.critic_approved_count}/{dossier.total_protocols}",
             "mean_ctdi_reduction_pct": round(dossier.fleet_mean_ctdi_reduction_pct, 2),
@@ -278,7 +285,7 @@ def run_audit() -> dict[str, Any]:
         },
     )
 
-    # 10. All 6 publication PNG + PDF figures present
+    # 10. All 8 publication PNG + PDF figures present
     expected_figs = [
         "fig1_tg233_phantom_metrology",
         "fig2_dose_detectability_pareto",
@@ -286,13 +293,104 @@ def run_audit() -> dict[str, Any]:
         "fig4_fleet_protocol_drift_audit",
         "fig5_sobol_uncertainty_phase",
         "fig6_cohort_validation_calibration",
+        "fig7_multitask_vmi_calibration",
+        "fig8_qa_cusum_multiprocedure_psd",
     ]
     figs_ok = all(
         (REPO_ROOT / "figures" / f"{stem}.png").is_file()
         and (REPO_ROOT / "figures" / f"{stem}.pdf").is_file()
         for stem in expected_figs
     )
-    record("all_six_publication_figures_present", figs_ok, {"figure_stems": expected_figs})
+    record("all_eight_publication_figures_present", figs_ok, {"figure_stems": expected_figs})
+
+    # 11. True 3D Volumetric NPS Parseval conservation
+    nps_3d = measure_nps_3d_volumetric(vol, spec.pixel_spacing_mm, 1.0, spec.background_roi_centers_px)
+    record(
+        "volumetric_3d_nps_parseval",
+        nps_3d.parseval_3d_relative_error < 1e-10,
+        {"parseval_3d_relative_error": nps_3d.parseval_3d_relative_error},
+    )
+
+    # 12. Empirical phantom-to-surrogate scanner calibration fit quality
+    cal_runs = [
+        generate_tg233_phantom_volume(
+            size_px=192,
+            n_slices=8,
+            ctdi_vol_mgy=c,
+            insert_contrast_hu=ch,
+            recon_mode=rm,
+            ir_strength=ir,
+            seed=sd,
+        )
+        for c, ch, rm, ir, sd in (
+            (5.0, 400.0, ReconMode.FBP, 0.0, 1),
+            (14.0, 400.0, ReconMode.FBP, 0.0, 2),
+            (8.0, 120.0, ReconMode.HYBRID_IR, 0.45, 3),
+            (12.0, 60.0, ReconMode.HYBRID_IR, 0.75, 4),
+        )
+    ]
+    cal = fit_scanner_calibration_from_phantoms(
+        scanner_name="AuditCal", phantom_runs=cal_runs, reference_task=t1
+    )
+    record(
+        "empirical_scanner_calibration_fit",
+        cal.r2_noise_fit > 0.90 and cal.r2_f50_fit > 0.85,
+        {"r2_noise_fit": round(cal.r2_noise_fit, 4), "r2_f50_fit": round(cal.r2_f50_fit, 4)},
+    )
+
+    # 13. Multi-task Pareto + PCCT VMI + Longitudinal ATCM
+    cta_t = ClinicalTaskSpec(
+        name="2mm_cta", diameter_mm=2.0, contrast_hu=115.0, material_type="iodine", d_prime_target=6.0
+    )
+    mt = solve_multitask_pareto_frontier(
+        base_protocol=base_p,
+        d_w_cm=29.0,
+        tasks=[t1.model_copy(update={"d_prime_target": 3.0}), cta_t],
+        ctdi_grid_mgy=[2.0, 5.0, 9.0, 14.0, 20.0],
+    )
+    vmi_pcct = sweep_vmi_energy_curve(
+        protocol=base_p, d_w_cm=28.0, task=cta_t, ctdi_vol_mgy=6.0, is_photon_counting=True
+    )
+    atcm_res = optimize_longitudinal_atcm_profile(
+        protocol=base_p,
+        z_cm=[0.0, 15.0, 30.0, 45.0],
+        d_w_profile_cm=[24.0, 28.0, 32.0, 30.0],
+        task=t1.model_copy(update={"d_prime_target": 3.0}),
+    )
+    record(
+        "multitask_pcct_vmi_and_longitudinal_atcm",
+        mt.best_compliant_point is not None
+        and max(p.d_prime_npwe for p in vmi_pcct) > 10.0
+        and atcm_res.min_d_prime_across_z >= 2.99,
+        {
+            "best_multitask_ctdi_mgy": (
+                mt.best_compliant_point.ctdi_vol_mgy if mt.best_compliant_point else None
+            ),
+            "atcm_optimal_strength": atcm_res.optimal_atcm_strength,
+            "atcm_dlp_mgy_cm": round(atcm_res.total_dlp_mgy_cm, 2),
+        },
+    )
+
+    # 14. Longitudinal SQLite CUSUM QA drift detection & Multi-procedure Cranial PSD
+    tr, qa_rep = simulate_longitudinal_qa_benchmark(n_sessions=30, drift_onset_session=18, seed=42)
+    tr.close()
+    cum_psd = compute_cumulative_multiprocedure_psd(
+        [
+            MultiProcedureSession(session_id="S1", day_offset=0.0, events=rdsr_events[:1], geometry="head"),
+            MultiProcedureSession(session_id="S2", day_offset=60.0, events=rdsr_events[:1], geometry="head"),
+        ],
+        geometry="head",
+        n_azimuth=60,
+        n_z=40,
+    )
+    record(
+        "longitudinal_qa_cusum_and_multiprocedure_psd",
+        qa_rep.any_drift_detected and cum_psd.cumulative_psd_gy > cum_psd.biological_effective_psd_gy,
+        {
+            "qa_drift_detected": qa_rep.any_drift_detected,
+            "cumulative_head_psd_gy": round(cum_psd.cumulative_psd_gy, 3),
+        },
+    )
 
     report = {
         "engine_version": __version__,

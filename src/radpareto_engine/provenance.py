@@ -67,6 +67,8 @@ def build_provenance(
         "pareto_solution",
         "fleet_audit",
         "sobol_uq",
+        "scanner_calibration",
+        "qa_drift_audit",
     ],
     inputs: Any,
     outputs: Any,
@@ -109,9 +111,7 @@ def assert_tube_hardware_within_limits(
             f"max_tube_current_ma={limits.max_tube_current_ma:.1f} mA"
         )
     if power_kw > limits.max_power_kw + 1e-9:
-        violations.append(
-            f"power={power_kw:.1f} kW exceeds max_power_kw={limits.max_power_kw:.1f} kW"
-        )
+        violations.append(f"power={power_kw:.1f} kW exceeds max_power_kw={limits.max_power_kw:.1f} kW")
     if anode_heat_mhu > limits.anode_heat_capacity_mhu + 1e-9:
         violations.append(
             f"anode_heat={anode_heat_mhu:.2f} MHU exceeds "
@@ -123,9 +123,7 @@ def assert_tube_hardware_within_limits(
             f"min_rotation_time_s={limits.min_rotation_time_s:.3f} s"
         )
     if filtration.startswith("tin_") and not limits.supports_tin_filter:
-        violations.append(
-            f"filtration={filtration} requested on scanner without tin-filter support"
-        )
+        violations.append(f"filtration={filtration} requested on scanner without tin-filter support")
 
     if violations:
         details = {
@@ -163,8 +161,7 @@ def assert_rdsr_calibration_present(events: list[FluoroIrradiationEvent]) -> Non
     if missing:
         raise AbstentionError(
             AbstentionCode.MISSING_RDSR_CALIBRATION,
-            "Uncalibrated RDSR event(s) cannot yield defensible Peak Skin Dose: "
-            + "; ".join(missing[:5]),
+            "Uncalibrated RDSR event(s) cannot yield defensible Peak Skin Dose: " + "; ".join(missing[:5]),
             details={"missing_count": len(missing), "missing_fields": missing},
         )
 

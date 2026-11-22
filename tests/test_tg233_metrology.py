@@ -77,9 +77,7 @@ def test_contrast_dependent_ttf_and_ir_nps_peak_shift() -> None:
     nps_fbp = measure_nps_2d_3d(
         vol_fbp_hi, spec_fbp_hi.pixel_spacing_mm, spec_fbp_hi.background_roi_centers_px
     )
-    nps_ir = measure_nps_2d_3d(
-        vol_ir_hi, spec_ir_hi.pixel_spacing_mm, spec_ir_hi.background_roi_centers_px
-    )
+    nps_ir = measure_nps_2d_3d(vol_ir_hi, spec_ir_hi.pixel_spacing_mm, spec_ir_hi.background_roi_centers_px)
     ttf_ir_hi = measure_circular_ttf(
         vol_ir_hi,
         spec_ir_hi.pixel_spacing_mm,

@@ -132,11 +132,7 @@ def read_ct_dicom(
         if hasattr(ds, "XRayTubeCurrent") and ds.XRayTubeCurrent is not None
         else None
     )
-    exp_ms = (
-        float(ds.ExposureTime)
-        if hasattr(ds, "ExposureTime") and ds.ExposureTime is not None
-        else None
-    )
+    exp_ms = float(ds.ExposureTime) if hasattr(ds, "ExposureTime") and ds.ExposureTime is not None else None
     ctdi_elem = ds.get((0x0018, 0x9345), None)
     ctdi_vol = float(ctdi_elem.value) if ctdi_elem is not None else None
 
@@ -207,9 +203,7 @@ def write_ct_phantom_dicom(
     # Use 0.1 HU slope with int16 storage (covers [-3276.8, +3276.7] HU at 0.1 HU precision)
     rescale_slope = 0.1
     rescale_intercept = -1024.0
-    stored = np.clip(np.round((arr - rescale_intercept) / rescale_slope), -32768, 32767).astype(
-        np.int16
-    )
+    stored = np.clip(np.round((arr - rescale_intercept) / rescale_slope), -32768, 32767).astype(np.int16)
 
     file_meta = FileMetaDataset()
     file_meta.MediaStorageSOPClassUID = CTImageStorage
@@ -296,9 +290,7 @@ def write_rdsr_dicom(
         container.RelationshipType = "CONTAINS"
         container.ValueType = "CONTAINER"
         container.ContinuityOfContent = "SEPARATE"
-        container.ConceptNameCodeSequence = Sequence(
-            [_make_code_item(*CODE_IRRADIATION_EVENT_DATA)]
-        )
+        container.ConceptNameCodeSequence = Sequence([_make_code_item(*CODE_IRRADIATION_EVENT_DATA)])
 
         children: list[Dataset] = [
             _make_text_content_item(CODE_IRRADIATION_EVENT_UID, ev.event_id),
@@ -331,9 +323,7 @@ def write_rdsr_dicom(
             )
         if include_calibration_metadata and ev.table_pad_transmission is not None:
             children.append(
-                _make_num_content_item(
-                    CODE_TABLE_TRANSMISSION, ev.table_pad_transmission, "1", "ratio"
-                )
+                _make_num_content_item(CODE_TABLE_TRANSMISSION, ev.table_pad_transmission, "1", "ratio")
             )
         if include_calibration_metadata and ev.backscatter_factor is not None:
             children.append(
@@ -359,13 +349,24 @@ def _extract_numeric_value(item: Dataset) -> tuple[float, str]:
     return val, unit
 
 
-def read_rdsr_dicom(path: Path | str) -> tuple[list[FluoroIrradiationEvent], ProvenanceRecord]:
-    """Parse a DICOM X-Ray Radiation Dose SR (RDSR) file into typed FluoroIrradiationEvent list."""
+def read_rdsr_dicom(
+    path: Path | str,
+    *,
+    vendor_dialect: str = "standard",
+) -> tuple[list[FluoroIrradiationEvent], ProvenanceRecord]:
+    """Parse a DICOM X-Ray Radiation Dose SR (RDSR) file into typed FluoroIrradiationEvent list.
+
+    Includes vendor-dialect resilience for `siemens_artis`, `philips_azurion`, and `ge_innova`:
+    - Automatically derives `beam_area_at_irp_cm2` from `KAP / Ka,r` when Collimated Field Area
+      is omitted by the angiography console.
+    - Normalizes table-height sign convention for dialects that report inverted vertical offsets.
+    """
     file_path = Path(path)
     ds = pydicom.dcmread(file_path)
 
     events: list[FluoroIrradiationEvent] = []
     content_seq = getattr(ds, "ContentSequence", [])
+    height_sign = -1.0 if vendor_dialect in ("philips_azurion", "ge_innova") else 1.0
 
     for idx, item in enumerate(content_seq):
         if getattr(item, "ValueType", "") != "CONTAINER":
@@ -406,18 +407,27 @@ def read_rdsr_dicom(path: Path | str) -> tuple[list[FluoroIrradiationEvent], Pro
                 elif c_code == CODE_TABLE_LATERAL[0]:
                     fields["table_lateral_mm"] = val
                 elif c_code == CODE_TABLE_HEIGHT[0]:
-                    fields["table_height_offset_mm"] = val
+                    fields["table_height_offset_mm"] = height_sign * val
                 elif c_code == CODE_TABLE_TRANSMISSION[0]:
                     fields["table_pad_transmission"] = val
                 elif c_code == CODE_BACKSCATTER_FACTOR[0]:
                     fields["backscatter_factor"] = val
 
+        # Vendor resilience: derive collimated field area from KAP / Ka,r if console omitted (113790)
+        if (
+            "beam_area_at_irp_cm2" not in fields
+            and fields.get("reference_air_kerma_mgy", 0.0) > 0.0
+            and fields.get("dose_area_product_gy_cm2", 0.0) > 0.0
+        ):
+            ka_gy = fields["reference_air_kerma_mgy"] / 1000.0
+            fields["beam_area_at_irp_cm2"] = float(
+                np.clip(fields["dose_area_product_gy_cm2"] / ka_gy, 16.0, 2000.0)
+            )
+
         events.append(FluoroIrradiationEvent(**fields))
 
     file_sha = sha256_file(file_path)
-    has_cal = all(
-        e.table_pad_transmission is not None and e.backscatter_factor is not None for e in events
-    )
+    has_cal = all(e.table_pad_transmission is not None and e.backscatter_factor is not None for e in events)
     prov = build_provenance(
         artifact_kind="observed_dicom",
         inputs={"path": str(file_path), "file_sha256": file_sha},

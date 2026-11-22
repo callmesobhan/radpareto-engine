@@ -6,8 +6,9 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-009E73?style=flat-square)](LICENSE)
 [![Research Software](https://img.shields.io/badge/status-Research%20Software%20%E2%80%94%20NOT%20A%20MEDICAL%20DEVICE-D55E00?style=flat-square)](NOTICE)
 [![Standards: AAPM TG-233 / TG-204 / TG-220 / TG-293](https://img.shields.io/badge/standards-AAPM%20TG--233%20%7C%20TG--204%2F220%2F293%20%7C%20NCRP%20168%20%7C%20ICRP%20120-56B4E9?style=flat-square)](DATA_SOURCES_AND_CITATIONS.md)
-[![MCP: JSON-RPC 2.0](https://img.shields.io/badge/MCP-6%20Typed%20Tools%20(stdio)-E69F00?style=flat-square)](src/radpareto_engine/harness/mcp_server.py)
-[![Audit: 10/10 Pass](https://img.shields.io/badge/independent%20audit-10%2F10%20PASS-009E73?style=flat-square)](docs/AUDIT_REPORT.md)
+[![MCP: JSON-RPC 2.0](https://img.shields.io/badge/MCP-8%20Typed%20Tools%20(stdio)-E69F00?style=flat-square)](src/radpareto_engine/harness/mcp_server.py)
+[![Audit: 14/14 Pass](https://img.shields.io/badge/independent%20audit-14%2F14%20PASS-009E73?style=flat-square)](docs/AUDIT_REPORT.md)
+[![Version: v0.2.0](https://img.shields.io/badge/version-v0.2.0-0072B2?style=flat-square)](pyproject.toml)
 
 > **RESEARCH SOFTWARE NOTICE — NOT A MEDICAL DEVICE.** `radpareto-engine` is provided exclusively for medical physics research, algorithm benchmarking, and phantom metrology education under the Apache-2.0 License. It has **not** been cleared or approved by the FDA, EU MDR, or any regulatory authority, and **must not** be used for clinical diagnosis, automated scanner exposure control, or unverified clinical dose reporting without Qualified Medical Physicist (QMP) commissioning.
 
@@ -55,6 +56,11 @@ All metrics below are deterministically reproduced by `scripts/run_benchmarks_an
 | **Saltelli–Jansen Sobol' UQ** | Analytical Ishigami accuracy ($N_{\text{base}}=1024$) | **Max err `0.0124`** | Saltelli 2010 / Jansen 1999 QMC |
 | **Public Open-License CT Sample** | `data/public_ct_sample/CT_small.dcm` (MIT) | **$D_w = 8.72\text{ cm}$** | SHA-256 verified against `MANIFEST.json` |
 | **Hard Safety Abstention Gates** | Adversarial trigger suite across all 5 `AbstentionCode`s | **`5 / 5` FIRED** | Zero silent bypasses |
+| **3D Volumetric NPS Parseval** | Full 3D FFT $\mathrm{NPS}_{3D}(f_x, f_y, f_z)$ variance check | **`< 1e-15`** | Exact 3D Parseval conservation |
+| **Empirical Scanner Calibration** | Phantom-to-surrogate regression fit ($n=6$ scans) | **$R^2_{\text{noise}} = 1.000$, $R^2_{f_{50}} = 0.992$** | RMS $d'$ error `0.31` |
+| **Joint Multi-Task Pareto & VMI** | Simultaneous Liver + CTA compliance & PCCT VMI UHR | **`6.68 mGy`** joint min; **PCCT 40 keV $d'=21.0$** | Binding-task guardrail + K-edge peak |
+| **Longitudinal ATCM & QA CUSUM** | $z$-axis ATCM DLP savings & 30-session SQLite CUSUM | **`-44.8%` DLP**; **Alert at Session 20** | Tube aging onset at Session 18 caught in 2 runs |
+| **Multi-Procedure Cranial PSD** | 3 staged neuro-angiography runs (120-day window) | **`15.8 Gy`** strict vs. **`12.7 Gy`** repair-weighted | TJC $\ge 15\text{ Gy}$ sentinel gate |
 
 ---
 
@@ -80,6 +86,12 @@ All 6 figures follow *Medical Physics* / *Radiology* styling with the colorblind
 ### 6. Public Open-License CT Calibration, Multi-Habitus SSDE & Formal Invariant Verification
 ![Cohort Validation & Calibration](figures/fig6_cohort_validation_calibration.png)
 
+### 7. Empirical Scanner Calibration, Joint Multi-Task Pareto & PCCT/DECT Spectral VMI (`v0.2.0`)
+![Multi-Task Pareto & PCCT VMI](figures/fig7_multitask_vmi_calibration.png)
+
+### 8. Longitudinal SQLite TG-233 QA CUSUM Drift Monitor & Multi-Procedure Cranial PSD (`v0.2.0`)
+![Longitudinal QA CUSUM & Multi-Procedure PSD](figures/fig8_qa_cusum_multiprocedure_psd.png)
+
 ---
 
 ## Quickstart (`uv` + Python 3.12)
@@ -91,14 +103,19 @@ uv sync --extra dev --python 3.12
 # 2. Verify public MIT CT sample + SHA-256 manifest
 uv run python scripts/fetch_public_ct_sample.py
 
-# 3. Run full test suite (strict warnings as errors) & lint
+# 3. Unified CLI (`radpareto`) quick runs
+uv run radpareto tg233 --recon hybrid_ir --ctdi 10
+uv run radpareto pareto --dw 29 --multitask
+uv run radpareto psd results/benchmark_cto_pci_rdsr.dcm --geometry torso
+uv run radpareto audit
+uv run radpareto qa-check --sessions 30 --drift-onset 18
+
+# 4. Run full test suite (strict warnings + Hypothesis fuzzing) & lint
 uv run pytest --cov=radpareto_engine --cov-report=term-missing
 uv run ruff check src tests scripts
 
-# 4. Reproduce all 6 publication figures & fleet audit dossier
+# 5. Reproduce all 8 publication figures & 14-check independent audit
 uv run python scripts/run_benchmarks_and_figures.py
-
-# 5. Run independent 10-check physics & provenance audit
 uv run python scripts/run_independent_audit.py
 ```
 
@@ -142,12 +159,12 @@ print(f"Critic approved: {dossier.critic_approved_count}/{dossier.total_protocol
 </details>
 
 <details>
-<summary><strong>MCP Server (JSON-RPC 2.0 stdio): 6 Provenance-Gated Physics Tools</strong></summary>
+<summary><strong>MCP Server (JSON-RPC 2.0 stdio): 8 Provenance-Gated Physics Tools</strong></summary>
 
 Start the zero-bloat stdio MCP server:
 
 ```bash
-uv run radpareto-mcp
+uv run radpareto-mcp   # or: uv run radpareto mcp
 ```
 
 Exposed tools (`tools/list`):
@@ -157,6 +174,8 @@ Exposed tools (`tools/list`):
 4. `radpareto_invert_min_dose_for_dprime` — Exact Brent inverse solve for minimum $\text{CTDI}_{\text{vol}}$ guaranteeing $d' \ge d'_{\text{target}}$.
 5. `radpareto_audit_protocol_fleet` — Multi-vendor drift audit + Critic-Verifier Gate dossier.
 6. `radpareto_run_sobol_sensitivity` — Saltelli–Jansen QMC global Sobol' sensitivity ($S_1, S_T, 95\%\text{ CI}$).
+7. `radpareto_solve_multitask_pareto` — Joint multi-task Pareto optimization (Liver + CTA) with optional PCCT/DECT VMI sweep.
+8. `radpareto_analyze_dicom_file` — Real local CT Image (`.dcm`) or DICOM RDSR (`.dcm`) analysis with SHA-256 provenance.
 
 Example JSON-RPC 2.0 call:
 

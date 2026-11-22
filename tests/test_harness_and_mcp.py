@@ -72,11 +72,11 @@ def test_mcp_jsonrpc_lifecycle_and_all_six_tools() -> None:
     ping_resp = server.handle_request({"jsonrpc": "2.0", "id": 2, "method": "ping"})
     assert ping_resp is not None and ping_resp["result"] == {}
 
-    # List tools (6 tools)
+    # List tools (8 tools in v0.2.0)
     list_resp = server.handle_request({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})
     assert list_resp is not None
     tool_names = [t["name"] for t in list_resp["result"]["tools"]]
-    assert len(tool_names) == 6
+    assert len(tool_names) == 8
     assert set(tool_names) == {
         "radpareto_measure_tg233",
         "radpareto_compute_ssde_and_psd",
@@ -84,9 +84,14 @@ def test_mcp_jsonrpc_lifecycle_and_all_six_tools() -> None:
         "radpareto_invert_min_dose_for_dprime",
         "radpareto_audit_protocol_fleet",
         "radpareto_run_sobol_sensitivity",
+        "radpareto_solve_multitask_pareto",
+        "radpareto_analyze_dicom_file",
     }
 
     # Call each tool cleanly
+    repo_root = Path(__file__).resolve().parents[1]
+    pub_ct = str(repo_root / "data" / "public_ct_sample" / "CT_small.dcm")
+    bench_rdsr = str(repo_root / "results" / "benchmark_cto_pci_rdsr.dcm")
     calls = [
         ("radpareto_measure_tg233", {"n_slices": 4, "ctdi_vol_mgy": 10.0}),
         (
@@ -115,6 +120,9 @@ def test_mcp_jsonrpc_lifecycle_and_all_six_tools() -> None:
             "radpareto_run_sobol_sensitivity",
             {"domain": "ct_detectability", "n_base_power_of_2": 32},
         ),
+        ("radpareto_solve_multitask_pareto", {"d_w_cm": 29.0, "include_vmi_sweep": True}),
+        ("radpareto_analyze_dicom_file", {"file_path": pub_ct, "modality": "ct"}),
+        ("radpareto_analyze_dicom_file", {"file_path": bench_rdsr, "modality": "rdsr"}),
     ]
     for idx, (name, args) in enumerate(calls, start=10):
         resp = server.handle_request(

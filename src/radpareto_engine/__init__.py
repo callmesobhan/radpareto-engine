@@ -3,7 +3,7 @@
 Research Software — NOT A MEDICAL DEVICE.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from radpareto_engine.ir import (
     AbstentionCode,
@@ -12,12 +12,15 @@ from radpareto_engine.ir import (
     CTProtocolSpec,
     CTVendor,
     FluoroIrradiationEvent,
+    MultiProcedureSession,
     ParetoPoint,
     PhantomScanSpec,
     ProvenanceRecord,
     ReconMode,
+    ScannerCalibrationModel,
     TG233Metrics,
     TubeHardwareLimits,
+    VMISpec,
 )
 
 __all__ = [
@@ -27,11 +30,14 @@ __all__ = [
     "CTVendor",
     "ClinicalTaskSpec",
     "FluoroIrradiationEvent",
+    "MultiProcedureSession",
     "ParetoPoint",
     "PhantomScanSpec",
     "ProvenanceRecord",
     "ReconMode",
+    "ScannerCalibrationModel",
     "TG233Metrics",
     "TubeHardwareLimits",
+    "VMISpec",
     "__version__",
 ]

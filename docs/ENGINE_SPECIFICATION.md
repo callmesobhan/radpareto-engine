@@ -103,3 +103,14 @@ Uses scrambled QMC Sobol' sequences (`scipy.stats.qmc.Sobol`) with $N(d+2)$ eval
 | `PSD_SENTINEL_THRESHOLD_EXCEEDED` | Peak Skin Dose reaches or exceeds sentinel threshold (default `15.0 Gy` TJC) |
 
 Every autonomous fleet optimization proposal passes through an independent **Critic-Verifier Gate** that recomputes the proposed protocol from scratch, verifying `d' >= d'_min`, `hardware_utilization <= 1.0`, non-inflation of dose on over-dosed baselines, and SHA-256 verification digest before approval.
+
+---
+
+## 7. `v0.2.0` Extensions
+
+- **True 3D Volumetric NPS (`tg233_metrology.measure_nps_3d_volumetric`):** Full 3D FFT $\mathrm{NPS}_{3D}(f_x, f_y, f_z)$ over multi-slice stacks with exact 3D Parseval conservation ($\sum \mathrm{NPS}_{3D}\,\Delta f_x \Delta f_y \Delta f_z == \overline{\sigma^2_{3D}}$).
+- **Empirical Phantom-to-Surrogate Scanner Calibration (`scanner_calibration.py`):** Regresses scanner-specific `(base_f50, ir_blur_low_contrast_slope, base_noise_coeff, ir_noise_reduction_slope, f_peak_fbp, f_peak_ir_shift)` directly from measured TG-233 phantom volumes.
+- **PCCT / Dual-Energy Virtual Monoenergetic (VMI 40–140 keV) Physics & UHR Mode (`pareto_optimizer.py`):** Models monochromatic iodine/calcium/soft-tissue attenuation and PCCT vs. EID-DECT low-keV noise tradeoffs.
+- **Joint Multi-Task Pareto & Longitudinal $z$-Axis ATCM Optimization (`pareto_optimizer.py`):** Enforces $\forall k,\; d'_k \ge d'_{k,\min}$ across simultaneous clinical tasks and minimizes total DLP across full patient $D_w(z)$ topogram profiles.
+- **Cranial Neuro-Interventional PSD, Multi-Procedure Accumulation & Vendor RDSR Dialects (`dosimetry_rdsr.py`, `dicom_io.py`):** Supports `geometry="head"`, longitudinal 6–12 month multi-procedure cumulative PSD with optional repair half-life weighting, and vendor-resilient RDSR parsing (`siemens_artis`, `philips_azurion`, `ge_innova`).
+- **Longitudinal SQLite QA Drift Tracker (`harness/qa_drift_tracker.py`) & Unified CLI (`cli.py`):** Zero-dependency SQLite QA ledger with two-sided Tabular CUSUM SPC alerts (`k=0.5, h=4.5`) plus `radpareto` CLI and 8 provenance-gated MCP tools.

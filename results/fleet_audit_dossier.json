@@ -6,12 +6,12 @@
   "critic_approved_count": 6,
   "total_protocols": 6,
   "provenance": {
-    "schema_version": "1.0.0",
-    "engine_version": "0.1.0",
+    "schema_version": "1.1.0",
+    "engine_version": "0.2.0",
     "artifact_kind": "fleet_audit",
     "input_sha256": "63b568541fece8205c5e4ef26769e73b6603e735c00732ab2080745ae8d164d8",
     "output_sha256": "36ed9928771942d7deb717267fd42ced1b0b91b5b2e02f6060ba430b6b605afb",
-    "timestamp_utc": "2026-11-22T11:07:37.425507+00:00",
+    "timestamp_utc": "2026-11-22T11:36:15.359000+00:00",
     "standards_referenced": [
       "AAPM TG-233 (Samei et al., Med Phys 2019;46(11):e735-e756, DOI:10.1002/mp.13763)",
       "AAPM Report No. 204 (2011), Report No. 220 (2014), & Report No. 293 (2019): SSDE",

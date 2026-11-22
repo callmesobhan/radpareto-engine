@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "radpareto-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "Closed-loop AAPM TG-233 Task-Based Image Quality x Organ & Peak-Skin-Dose Pareto Protocol Optimization Engine with Frontier Agent Harness and MCP Server"
 readme = "README.md"
 license = "Apache-2.0"
@@ -48,9 +48,11 @@ dev = [
   "pytest>=8.2",
   "pytest-cov>=5.0",
   "ruff>=0.6",
+  "hypothesis>=6.100",
 ]
 
 [project.scripts]
+radpareto = "radpareto_engine.cli:main"
 radpareto-mcp = "radpareto_engine.harness.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]

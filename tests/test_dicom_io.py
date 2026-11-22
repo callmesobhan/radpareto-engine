@@ -103,9 +103,7 @@ def test_rdsr_dicom_lossless_round_trip_and_psd_eval(tmp_path: Path) -> None:
         assert rec.primary_angle_deg == pytest.approx(orig.primary_angle_deg, abs=1e-4)
         assert rec.secondary_angle_deg == pytest.approx(orig.secondary_angle_deg, abs=1e-4)
         assert rec.reference_air_kerma_mgy == pytest.approx(orig.reference_air_kerma_mgy, rel=1e-4)
-        assert rec.dose_area_product_gy_cm2 == pytest.approx(
-            orig.dose_area_product_gy_cm2, rel=1e-4
-        )
+        assert rec.dose_area_product_gy_cm2 == pytest.approx(orig.dose_area_product_gy_cm2, rel=1e-4)
         assert rec.beam_area_at_irp_cm2 == pytest.approx(orig.beam_area_at_irp_cm2, rel=1e-4)
         assert rec.table_pad_transmission == pytest.approx(orig.table_pad_transmission, rel=1e-4)
         assert rec.backscatter_factor == pytest.approx(orig.backscatter_factor, rel=1e-4)

@@ -204,9 +204,7 @@ def measure_nps_2d_3d(
     peak_idx = int(np.argmax(nps_1d))
     f_peak = float(bin_centers[peak_idx])
     denom = float(np.trapezoid(nps_1d, bin_centers))
-    f_mean = (
-        float(np.trapezoid(bin_centers * nps_1d, bin_centers) / denom) if denom > 1e-12 else 0.0
-    )
+    f_mean = float(np.trapezoid(bin_centers * nps_1d, bin_centers) / denom) if denom > 1e-12 else 0.0
 
     _ = slice_thickness_mm  # retained in signature for 3D volumetric metadata consistency
 
@@ -223,6 +221,109 @@ def measure_nps_2d_3d(
         parseval_image_variance_hu2=mean_image_variance,
         parseval_relative_error=parseval_rel_err,
         parseval_1d_radial_integral_hu2=radial_integral,
+    )
+
+
+@dataclass(frozen=True)
+class NPS3DVolumetricResult:
+    """True 3D volumetric FFT Noise Power Spectrum result with exact 3D Parseval check."""
+
+    fz_mm_inv: NDArray[np.float64]
+    nps_z_marginal_hu2_mm: NDArray[np.float64]
+    radial_frequencies_mm_inv: NDArray[np.float64]
+    nps_inplane_1d_hu2_mm2: NDArray[np.float64]
+    nps_3d_hu2_mm3: NDArray[np.float64]
+    noise_std_3d_hu: float
+    parseval_3d_integral_hu2: float
+    parseval_3d_variance_hu2: float
+    parseval_3d_relative_error: float
+
+
+def measure_nps_3d_volumetric(
+    volume: NDArray[np.float64],
+    pixel_spacing_mm: float,
+    slice_thickness_mm: float,
+    roi_centers_px: list[tuple[float, float]],
+    roi_size_px: int = 32,
+    parseval_tolerance: float = 0.02,
+) -> NPS3DVolumetricResult:
+    """Measure true 3D volumetric NPS(fx, fy, fz) via 3D FFT with exact 3D Parseval verification."""
+    arr = np.asarray(volume, dtype=np.float64)
+    if arr.ndim != 3 or arr.shape[0] < 4:
+        raise ValueError(f"3D volumetric NPS requires 3D stack with Nz >= 4, got shape {arr.shape}")
+
+    nz, ny, nx = arr.shape
+    half = roi_size_px // 2
+    dx = float(pixel_spacing_mm)
+    dy = float(pixel_spacing_mm)
+    dz = float(slice_thickness_mm)
+
+    voi_list: list[NDArray[np.float64]] = []
+    variances: list[float] = []
+    for cy, cx in roi_centers_px:
+        y0 = round(cy) - half
+        x0 = round(cx) - half
+        y1 = y0 + roi_size_px
+        x1 = x0 + roi_size_px
+        if y0 < 0 or x0 < 0 or y1 > ny or x1 > nx:
+            raise ValueError(
+                f"3D VOI centered at ({cy}, {cx}) of size {roi_size_px} exceeds bounds ({ny}, {nx})."
+            )
+        # Detrend each 2D slice and remove 3D VOI mean
+        voi = np.empty((nz, roi_size_px, roi_size_px), dtype=np.float64)
+        for z_idx in range(nz):
+            voi[z_idx] = _detrend_2d_plane(arr[z_idx, y0:y1, x0:x1])
+        voi -= float(np.mean(voi))
+        voi_list.append(voi)
+        variances.append(float(np.mean(voi**2)))
+
+    psd_3d_accum = np.zeros((nz, roi_size_px, roi_size_px), dtype=np.float64)
+    for voi in voi_list:
+        psd_3d_accum += np.abs(np.fft.fftn(voi)) ** 2
+
+    nps_3d_unshifted = (dx * dy * dz / (nz * roi_size_px * roi_size_px)) * (psd_3d_accum / len(voi_list))
+    nps_3d = np.maximum(np.fft.fftshift(nps_3d_unshifted), 0.0)
+
+    dfx = 1.0 / (roi_size_px * dx)
+    dfy = 1.0 / (roi_size_px * dy)
+    dfz = 1.0 / (nz * dz)
+
+    parseval_3d_int = float(np.sum(nps_3d) * dfx * dfy * dfz)
+    mean_var_3d = float(np.mean(variances))
+    rel_err_3d = assert_parseval_invariant(
+        nps_integral_hu2=parseval_3d_int,
+        image_variance_hu2=mean_var_3d,
+        tolerance=parseval_tolerance,
+    )
+
+    # Integrate over fz to recover effective 2D in-plane NPS(fx, fy) and radially average
+    nps_2d_eff = np.sum(nps_3d, axis=0) * dfz
+    fx = np.fft.fftshift(np.fft.fftfreq(roi_size_px, d=dx))
+    fy = np.fft.fftshift(np.fft.fftfreq(roi_size_px, d=dy))
+    fz = np.fft.fftshift(np.fft.fftfreq(nz, d=dz))
+    nps_z_marginal = np.sum(nps_3d, axis=(1, 2)) * dfx * dfy
+
+    fr = np.hypot(*np.meshgrid(fx, fy))
+    f_nyq = 0.5 / dx
+    n_bins = max(12, roi_size_px // 2)
+    edges = np.linspace(0.0, f_nyq, n_bins + 1)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    nps_1d = np.zeros(n_bins, dtype=np.float64)
+    for b in range(n_bins):
+        mask = (fr >= edges[b]) & (fr <= edges[b + 1] if b == n_bins - 1 else fr < edges[b + 1])
+        if np.any(mask):
+            nps_1d[b] = float(np.mean(nps_2d_eff[mask]))
+
+    return NPS3DVolumetricResult(
+        fz_mm_inv=fz,
+        nps_z_marginal_hu2_mm=nps_z_marginal,
+        radial_frequencies_mm_inv=centers,
+        nps_inplane_1d_hu2_mm2=nps_1d,
+        nps_3d_hu2_mm3=nps_3d,
+        noise_std_3d_hu=float(np.sqrt(mean_var_3d)),
+        parseval_3d_integral_hu2=parseval_3d_int,
+        parseval_3d_variance_hu2=mean_var_3d,
+        parseval_3d_relative_error=rel_err_3d,
     )
 
 
@@ -475,9 +576,7 @@ def compute_detectability_dprime(
     d_prime_npwe = float(num / denom) if num > 0.0 else 0.0
 
     # Laguerre-Gauss Channelized Hotelling Observer (CHO) in frequency domain
-    channels = _laguerre_gauss_channels_freq(
-        f, radius_mm=0.5 * task.diameter_mm, n_channels=n_cho_channels
-    )
+    channels = _laguerre_gauss_channels_freq(f, radius_mm=0.5 * task.diameter_mm, n_channels=n_cho_channels)
     # Prevent unphysical zero-frequency singularity in detrended phantom NPS when forming CHO covariance
     nps_cho = np.maximum(nps, 0.05 * float(np.max(nps)))
     g_vec = np.zeros(n_cho_channels, dtype=np.float64)
