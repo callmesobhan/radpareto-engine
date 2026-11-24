@@ -6,9 +6,9 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-009E73?style=flat-square)](LICENSE)
 [![Research Software](https://img.shields.io/badge/status-Research%20Software%20%E2%80%94%20NOT%20A%20MEDICAL%20DEVICE-D55E00?style=flat-square)](NOTICE)
 [![Standards: AAPM TG-233 / TG-204 / TG-220 / TG-293](https://img.shields.io/badge/standards-AAPM%20TG--233%20%7C%20TG--204%2F220%2F293%20%7C%20NCRP%20168%20%7C%20ICRP%20120-56B4E9?style=flat-square)](DATA_SOURCES_AND_CITATIONS.md)
-[![MCP: JSON-RPC 2.0](https://img.shields.io/badge/MCP-8%20Typed%20Tools%20(stdio)-E69F00?style=flat-square)](src/radpareto_engine/harness/mcp_server.py)
-[![Audit: 14/14 Pass](https://img.shields.io/badge/independent%20audit-14%2F14%20PASS-009E73?style=flat-square)](docs/AUDIT_REPORT.md)
-[![Version: v0.2.0](https://img.shields.io/badge/version-v0.2.0-0072B2?style=flat-square)](pyproject.toml)
+[![MCP: JSON-RPC 2.0](https://img.shields.io/badge/MCP-10%20Typed%20Tools%20(stdio)-E69F00?style=flat-square)](src/radpareto_engine/harness/mcp_server.py)
+[![Audit: 18/18 Pass](https://img.shields.io/badge/independent%20audit-18%2F18%20PASS-009E73?style=flat-square)](docs/AUDIT_REPORT.md)
+[![Version: v0.3.0](https://img.shields.io/badge/version-v0.3.0-0072B2?style=flat-square)](pyproject.toml)
 
 > **RESEARCH SOFTWARE NOTICE — NOT A MEDICAL DEVICE.** `radpareto-engine` is provided exclusively for medical physics research, algorithm benchmarking, and phantom metrology education under the Apache-2.0 License. It has **not** been cleared or approved by the FDA, EU MDR, or any regulatory authority, and **must not** be used for clinical diagnosis, automated scanner exposure control, or unverified clinical dose reporting without Qualified Medical Physicist (QMP) commissioning.
 
@@ -61,6 +61,9 @@ All metrics below are deterministically reproduced by `scripts/run_benchmarks_an
 | **Joint Multi-Task Pareto & VMI** | Simultaneous Liver + CTA compliance & PCCT VMI UHR | **`6.68 mGy`** joint min; **PCCT 40 keV $d'=21.0$** | Binding-task guardrail + K-edge peak |
 | **Longitudinal ATCM & QA CUSUM** | $z$-axis ATCM DLP savings & 30-session SQLite CUSUM | **`-44.8%` DLP**; **Alert at Session 20** | Tube aging onset at Session 18 caught in 2 runs |
 | **Multi-Procedure Cranial PSD** | 3 staged neuro-angiography runs (120-day window) | **`15.8 Gy`** strict vs. **`12.7 Gy`** repair-weighted | TJC $\ge 15\text{ Gy}$ sentinel gate |
+| **In-Vivo GNL & Bowtie Off-Centering** | Phantom-free GNL, air-skin TTF & `-3.8 cm` table offset | **GNL `12.8 HU`**, **`+58.9%` avoidable waste** | Christianson 2015 / Sanders 2016 / Habibzadeh 2012 |
+| **Counterfactual Dose Digital Twin** | Correlated CT-NPS reduced-dose virtual-lesion spatial CHO | **ALARA cliff `3.1 mGy` (`-74%`)** | Captures real anatomical + quantum background |
+| **Cross-Vendor Protocol Compiler** | Siemens Force → GE Apex / Philips Incisive / Canon Aquilion | **GE `NI 25.7` (`-41.3%` SSDE)**; **100% $d'(D_w)$ match** | Native console knobs + QMP Markdown/CSV diff |
 
 ---
 
@@ -92,6 +95,12 @@ All 6 figures follow *Medical Physics* / *Radiology* styling with the colorblind
 ### 8. Longitudinal SQLite TG-233 QA CUSUM Drift Monitor & Multi-Procedure Cranial PSD (`v0.2.0`)
 ![Longitudinal QA CUSUM & Multi-Procedure PSD](figures/fig8_qa_cusum_multiprocedure_psd.png)
 
+### 9. In-Vivo Patient Metrology, Bowtie Off-Centering Penalty & Counterfactual Dose Digital Twin (`v0.3.0`)
+![In-Vivo Digital Twin & Bowtie Off-Centering](figures/fig9_invivo_digital_twin_offcentering.png)
+
+### 10. Cross-Vendor Equi-Detectability Protocol Compiler Across Siemens / GE / Philips / Canon (`v0.3.0`)
+![Cross-Vendor Equi-Detectability Protocol Compiler](figures/fig10_cross_vendor_protocol_compiler.png)
+
 ---
 
 ## Quickstart (`uv` + Python 3.12)
@@ -109,12 +118,14 @@ uv run radpareto pareto --dw 29 --multitask
 uv run radpareto psd results/benchmark_cto_pci_rdsr.dcm --geometry torso
 uv run radpareto audit
 uv run radpareto qa-check --sessions 30 --drift-onset 18
+uv run radpareto invivo --ctdi 12.0 --offset-cm -3.8
+uv run radpareto compile --from-vendor siemens --to-vendor ge --kvp 100 --ref-mas 165
 
 # 4. Run full test suite (strict warnings + Hypothesis fuzzing) & lint
 uv run pytest --cov=radpareto_engine --cov-report=term-missing
 uv run ruff check src tests scripts
 
-# 5. Reproduce all 8 publication figures & 14-check independent audit
+# 5. Reproduce all 10 publication figures & 18-check independent audit
 uv run python scripts/run_benchmarks_and_figures.py
 uv run python scripts/run_independent_audit.py
 ```
@@ -159,7 +170,7 @@ print(f"Critic approved: {dossier.critic_approved_count}/{dossier.total_protocol
 </details>
 
 <details>
-<summary><strong>MCP Server (JSON-RPC 2.0 stdio): 8 Provenance-Gated Physics Tools</strong></summary>
+<summary><strong>MCP Server (JSON-RPC 2.0 stdio): 10 Provenance-Gated Physics Tools</strong></summary>
 
 Start the zero-bloat stdio MCP server:
 
@@ -176,6 +187,8 @@ Exposed tools (`tools/list`):
 6. `radpareto_run_sobol_sensitivity` — Saltelli–Jansen QMC global Sobol' sensitivity ($S_1, S_T, 95\%\text{ CI}$).
 7. `radpareto_solve_multitask_pareto` — Joint multi-task Pareto optimization (Liver + CTA) with optional PCCT/DECT VMI sweep.
 8. `radpareto_analyze_dicom_file` — Real local CT Image (`.dcm`) or DICOM RDSR (`.dcm`) analysis with SHA-256 provenance.
+9. `radpareto_run_invivo_dose_digital_twin` — Phantom-free in-vivo GNL, air–skin TTF, bowtie off-centering audit & correlated low-dose virtual-lesion CHO digital twin.
+10. `radpareto_compile_vendor_protocol` — Cross-vendor equi-detectability protocol compiler translating native Siemens/GE/Philips/Canon console knobs across habitus $D_w$.
 
 Example JSON-RPC 2.0 call:
 

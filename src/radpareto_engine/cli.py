@@ -17,7 +17,8 @@ import sys
 from collections.abc import Sequence
 
 from radpareto_engine import __version__
-from radpareto_engine.dicom_io import read_rdsr_dicom
+from radpareto_engine.counterfactual_vct import run_counterfactual_dose_digital_twin
+from radpareto_engine.dicom_io import read_ct_dicom, read_rdsr_dicom
 from radpareto_engine.dosimetry_rdsr import compute_fluoro_3d_psd
 from radpareto_engine.harness.agent_orchestrator import audit_and_optimize_protocol_fleet
 from radpareto_engine.harness.mcp_server import main as mcp_main
@@ -25,16 +26,23 @@ from radpareto_engine.harness.qa_drift_tracker import (
     qa_drift_report_to_dict,
     simulate_longitudinal_qa_benchmark,
 )
+from radpareto_engine.in_vivo_metrology import generate_anatomical_abdomen_ct
 from radpareto_engine.ir import (
     AbstentionError,
     ClinicalTaskSpec,
     CTProtocolSpec,
+    CTVendor,
     ReconMode,
     TubeHardwareLimits,
 )
 from radpareto_engine.pareto_optimizer import (
     invert_min_dose_for_dprime,
     solve_multitask_pareto_frontier,
+)
+from radpareto_engine.protocol_compiler import (
+    compile_cross_vendor_protocol,
+    compiled_protocol_to_dict,
+    get_standard_vendor_scanner_profiles,
 )
 from radpareto_engine.tg233_metrology import (
     evaluate_tg233_phantom,
@@ -86,6 +94,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_qa = sub.add_parser("qa-check", help="Run longitudinal CUSUM QA drift audit benchmark.")
     p_qa.add_argument("--sessions", type=int, default=30)
     p_qa.add_argument("--drift-onset", type=int, default=18)
+
+    # invivo
+    p_iv = sub.add_parser(
+        "invivo", help="Run in-vivo GNL, off-centering & counterfactual reduced-dose digital twin."
+    )
+    p_iv.add_argument("--dicom", type=str, default=None, help="Optional CT DICOM path.")
+    p_iv.add_argument("--ctdi", type=float, default=12.0)
+    p_iv.add_argument("--offset-cm", type=float, default=-3.5)
+
+    # compile
+    p_cmp = sub.add_parser(
+        "compile", help="Compile a CT protocol across vendors matching d'(D_w) across habitus."
+    )
+    p_cmp.add_argument("--from-vendor", choices=["siemens", "ge", "philips", "canon"], default="siemens")
+    p_cmp.add_argument("--to-vendor", choices=["siemens", "ge", "philips", "canon"], default="ge")
+    p_cmp.add_argument("--kvp", type=float, default=100.0)
+    p_cmp.add_argument("--ref-mas", type=float, default=165.0)
 
     # mcp
     sub.add_parser("mcp", help="Run the JSON-RPC 2.0 stdio MCP server.")
@@ -212,6 +237,75 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             tracker.close()
             print(json.dumps(qa_drift_report_to_dict(report), indent=2))
+            return 0
+
+        if args.command == "invivo":
+            lesion_c = None
+            if args.dicom:
+                parsed = read_ct_dicom(args.dicom, compute_dw=True)
+                hu_slice = parsed.hu_array
+                dx = float(parsed.pixel_spacing_mm[0])
+                lbl = args.dicom
+            else:
+                hu_slice, meta = generate_anatomical_abdomen_ct(
+                    size_px=192, vertical_offset_cm=args.offset_cm
+                )
+                dx = float(meta["pixel_spacing_mm"])
+                lesion_c = meta["liver_center_px"]
+                lbl = "derived_anatomical_abdomen_benchmark"
+            task = ClinicalTaskSpec(
+                name="5mm_liver_lesion", diameter_mm=5.0, contrast_hu=35.0, d_prime_target=2.5
+            )
+            res = run_counterfactual_dose_digital_twin(
+                hu_slice=hu_slice,
+                pixel_spacing_mm=dx,
+                baseline_ctdi_vol_mgy=args.ctdi,
+                task=task,
+                lesion_center_px=lesion_c,
+                n_realizations=24,
+                source_label=lbl,
+            )
+            print(
+                json.dumps(
+                    {
+                        "d_w_cm": res.in_vivo_audit.d_w_result.d_w_cm,
+                        "gnl_hu": res.in_vivo_audit.gnl.gnl_hu,
+                        "in_vivo_f50_mm_inv": res.in_vivo_audit.in_vivo_ttf.f50_mm_inv,
+                        "vertical_offset_cm": res.in_vivo_audit.off_centering.vertical_offset_cm,
+                        "avoidable_dose_waste_pct": (
+                            res.in_vivo_audit.off_centering.avoidable_dose_waste_pct
+                        ),
+                        "alara_min_ctdi_vol_mgy": res.alara_min_ctdi_vol_mgy,
+                        "max_safe_dose_reduction_pct": res.max_safe_dose_reduction_pct,
+                        "provenance_sha256": res.provenance.output_sha256,
+                    },
+                    indent=2,
+                )
+            )
+            return 0
+
+        if args.command == "compile":
+            profiles = get_standard_vendor_scanner_profiles()
+            src_v = CTVendor(args.from_vendor)
+            tgt_v = CTVendor(args.to_vendor)
+            src_prof = profiles[src_v]
+            src_proto = CTProtocolSpec(
+                protocol_id=f"CLI_{src_v.value.upper()}_SRC",
+                scanner_name=src_prof.scanner_name,
+                vendor=src_v,
+                kvp=args.kvp,
+                ref_mas=args.ref_mas,
+                recon_mode=ReconMode.HYBRID_IR,
+                ir_strength=0.6,
+                pitch=src_prof.default_pitch,
+                rotation_time_s=src_prof.default_rotation_time_s,
+                hardware_limits=src_prof.hardware_limits,
+            )
+            task = ClinicalTaskSpec(name="5mm_liver_lesion", diameter_mm=5.0, contrast_hu=22.0)
+            compiled = compile_cross_vendor_protocol(
+                source_protocol=src_proto, target_profile=profiles[tgt_v], task=task
+            )
+            print(json.dumps(compiled_protocol_to_dict(compiled), indent=2))
             return 0
 
     except AbstentionError as exc:

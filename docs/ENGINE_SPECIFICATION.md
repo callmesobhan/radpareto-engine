@@ -113,4 +113,17 @@ Every autonomous fleet optimization proposal passes through an independent **Cri
 - **PCCT / Dual-Energy Virtual Monoenergetic (VMI 40–140 keV) Physics & UHR Mode (`pareto_optimizer.py`):** Models monochromatic iodine/calcium/soft-tissue attenuation and PCCT vs. EID-DECT low-keV noise tradeoffs.
 - **Joint Multi-Task Pareto & Longitudinal $z$-Axis ATCM Optimization (`pareto_optimizer.py`):** Enforces $\forall k,\; d'_k \ge d'_{k,\min}$ across simultaneous clinical tasks and minimizes total DLP across full patient $D_w(z)$ topogram profiles.
 - **Cranial Neuro-Interventional PSD, Multi-Procedure Accumulation & Vendor RDSR Dialects (`dosimetry_rdsr.py`, `dicom_io.py`):** Supports `geometry="head"`, longitudinal 6–12 month multi-procedure cumulative PSD with optional repair half-life weighting, and vendor-resilient RDSR parsing (`siemens_artis`, `philips_azurion`, `ge_innova`).
-- **Longitudinal SQLite QA Drift Tracker (`harness/qa_drift_tracker.py`) & Unified CLI (`cli.py`):** Zero-dependency SQLite QA ledger with two-sided Tabular CUSUM SPC alerts (`k=0.5, h=4.5`) plus `radpareto` CLI and 8 provenance-gated MCP tools.
+- **Longitudinal SQLite QA Drift Tracker (`harness/qa_drift_tracker.py`) & Unified CLI (`cli.py`):** Zero-dependency SQLite QA ledger with two-sided Tabular CUSUM SPC alerts (`k=0.5, h=4.5`) plus `radpareto` CLI and 10 provenance-gated MCP tools.
+
+---
+
+## 8. `v0.3.0` Flagship Differentiators (In-Vivo Digital Twin & Cross-Vendor Compiler)
+
+- **In-Vivo Patient-Image Metrology & Bowtie Off-Centering Audit (`in_vivo_metrology.py`):**
+  - *Global Noise Level (GNL):* Sliding-window soft-tissue local-SD histogram mode (Christianson et al., *AJR* 2015, DOI `10.2214/AJR.14.13613`) plus anatomical clutter index.
+  - *In-Vivo Air–Skin Edge TTF:* Signed Euclidean distance transform around anterior/lateral air–skin contours excluding posterior table contact (Sanders et al., *Med Phys* 2016, DOI `10.1118/1.4961984`).
+  - *Bowtie Off-Centering Pareto Penalty:* Computes patient centroid offset $(\Delta y, \Delta x)$ relative to gantry isocenter and quantifies coupled surface dose inflation, scout magnification, peripheral noise increase, and total avoidable dose waste (Habibzadeh 2012, DOI `10.1016/j.ejmp.2011.06.002`; Marsh & Silosky 2017, DOI `10.1002/mp.12137`).
+- **Counterfactual Correlated Low-Dose Virtual-Lesion Digital Twin (`counterfactual_vct.py`):**
+  - Injects 2D CT-NPS-shaped correlated noise strictly scaled to $\Delta\sigma^2 = \sigma_0^2(1/r - 1)$, inserts PSF-convolved ground-truth virtual lesions into patient parenchyma, and evaluates an empirical 5-channel spatial-domain Laguerre–Gauss CHO directly on real patient patches to locate the exact patient-specific ALARA dose cliff.
+- **Cross-Vendor Equi-Detectability Protocol Compiler (`protocol_compiler.py`):**
+  - Solves for target-vendor native console knobs (`Siemens QRM/ADMIRE/QIR` ↔ `GE Noise Index/ASiR-V/TrueFidelity` ↔ `Philips DRI/iDose4/IMR/Precise Image` ↔ `Canon SD/AIDR 3D/AiCE`) matching $d'(D_w)$ across the full habitus curve within target X-ray tube hardware limits, exporting QMP migration diff sheets (Markdown + CSV + JSON).

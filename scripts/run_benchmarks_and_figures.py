@@ -27,6 +27,11 @@ from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from radpareto_engine import __version__
+from radpareto_engine.counterfactual_vct import (
+    insert_virtual_lesion,
+    run_counterfactual_dose_digital_twin,
+    synthesize_reduced_dose_slice,
+)
 from radpareto_engine.dicom_io import read_ct_dicom, read_rdsr_dicom, write_rdsr_dicom
 from radpareto_engine.dosimetry_rdsr import (
     compute_cumulative_multiprocedure_psd,
@@ -39,6 +44,11 @@ from radpareto_engine.harness.agent_orchestrator import (
     save_audit_dossier,
 )
 from radpareto_engine.harness.qa_drift_tracker import simulate_longitudinal_qa_benchmark
+from radpareto_engine.in_vivo_metrology import (
+    audit_in_vivo_ct_slice,
+    compute_bowtie_off_centering_penalty,
+    generate_anatomical_abdomen_ct,
+)
 from radpareto_engine.ir import (
     ClinicalTaskSpec,
     CTProtocolSpec,
@@ -55,6 +65,12 @@ from radpareto_engine.pareto_optimizer import (
     solve_multitask_pareto_frontier,
     solve_pareto_frontier,
     sweep_vmi_energy_curve,
+)
+from radpareto_engine.protocol_compiler import (
+    compile_cross_vendor_protocol,
+    get_standard_vendor_scanner_profiles,
+    render_migration_diff_csv,
+    render_migration_diff_markdown,
 )
 from radpareto_engine.scanner_calibration import (
     fit_scanner_calibration_from_phantoms,
@@ -1890,6 +1906,408 @@ def generate_fig8_qa_cusum_and_multiprocedure_psd() -> dict[str, Any]:
     }
 
 
+def generate_fig9_invivo_digital_twin_and_offcentering() -> dict[str, Any]:
+    """Fig 9: In-Vivo CT Metrology, Bowtie Off-Centering Penalty & Counterfactual Dose Digital Twin."""
+    hu_img, meta = generate_anatomical_abdomen_ct(
+        size_px=256,
+        pixel_spacing_mm=1.6,
+        noise_std_hu=12.0,
+        vertical_offset_cm=-3.8,
+        lateral_offset_cm=0.5,
+        seed=42,
+    )
+    dx = float(meta["pixel_spacing_mm"])
+    task = ClinicalTaskSpec(
+        name="6mm_low_contrast_liver_lesion",
+        diameter_mm=6.0,
+        contrast_hu=-32.0,
+        material_type="soft_tissue",
+        edge_profile_exponent=1.0,
+        d_prime_target=2.4,
+    )
+    vct = run_counterfactual_dose_digital_twin(
+        hu_slice=hu_img,
+        pixel_spacing_mm=dx,
+        baseline_ctdi_vol_mgy=12.0,
+        task=task,
+        lesion_center_px=meta["liver_center_px"],
+        dose_fractions=[1.0, 0.75, 0.55, 0.40, 0.25],
+        n_realizations=36,
+        seed=42,
+        source_label="derived_anatomical_abdomen_benchmark",
+    )
+
+    # Also measure in-vivo GNL histogram on real public MIT CT_small.dcm
+    parsed_pub = read_ct_dicom(PUBLIC_CT_PATH, compute_dw=True)
+    pub_invivo = audit_in_vivo_ct_slice(
+        parsed_pub.hu_array, parsed_pub.pixel_spacing_mm, source_label="CT_small.dcm"
+    )
+
+    # Display image with inserted virtual lesion for Panel a
+    hu_with_lesion = insert_virtual_lesion(
+        hu_img,
+        pixel_spacing_mm=dx,
+        center_px=meta["liver_center_px"],
+        task=task,
+        scanner_f50_mm_inv=vct.in_vivo_audit.in_vivo_ttf.f50_mm_inv,
+    )
+    hu_50pct = synthesize_reduced_dose_slice(
+        hu_with_lesion,
+        pixel_spacing_mm=dx,
+        baseline_noise_std_hu=vct.in_vivo_audit.gnl.gnl_hu,
+        dose_fraction=0.50,
+        seed=101,
+    )
+
+    fig = plt.figure(figsize=(13.8, 9.6))
+    gs = GridSpec(2, 2, figure=fig, hspace=0.34, wspace=0.26, left=0.075, right=0.96, top=0.93, bottom=0.09)
+
+    # Panel a: Anatomical CT + off-centering vector + air-skin contour + virtual liver lesion ROI
+    ax_a = fig.add_subplot(gs[0, 0])
+    im = ax_a.imshow(hu_with_lesion, cmap="gray", vmin=-150, vmax=220, origin="upper")
+    ax_a.contour(hu_img > -500.0, levels=[0.5], colors=[OI["sky"]], linewidths=1.1, alpha=0.9)
+    iso_y, iso_x = vct.in_vivo_audit.off_centering.isocenter_px
+    pat_y, pat_x = vct.in_vivo_audit.off_centering.patient_centroid_px
+    ax_a.scatter([iso_x], [iso_y], color=OI["green"], marker="+", s=110, lw=2.0, label="Gantry Isocenter")
+    ax_a.scatter([pat_x], [pat_y], color=OI["vermilion"], marker="x", s=85, lw=2.0, label="Patient Centroid")
+    ax_a.annotate(
+        "",
+        xy=(pat_x, pat_y),
+        xytext=(iso_x, iso_y),
+        arrowprops={"arrowstyle": "->", "color": OI["orange"], "lw": 2.0},
+    )
+    ly, lx = meta["liver_center_px"]
+    ax_a.add_patch(patches.Circle((lx, ly), 12.0, fill=False, edgecolor="#00FFCC", lw=1.6, ls="--"))
+    ax_a.text(
+        lx,
+        ly - 16.0,
+        "Virtual 6 mm\nLesion ROI",
+        color="#00FFCC",
+        ha="center",
+        va="bottom",
+        fontsize=8.0,
+        fontweight="bold",
+    )
+    # 50 mm physical scalebar
+    bar_px = 50.0 / dx
+    ax_a.plot([200, 200 + bar_px], [240, 240], color="white", lw=3.0)
+    ax_a.text(
+        200 + bar_px / 2.0,
+        232,
+        "50 mm",
+        color="white",
+        ha="center",
+        va="bottom",
+        fontsize=8.4,
+        fontweight="bold",
+    )
+    ax_a.text(
+        0.04,
+        0.95,
+        (
+            f"$\\Delta y$ = {vct.in_vivo_audit.off_centering.vertical_offset_cm:+.2f} cm  |  "
+            f"GNL = {vct.in_vivo_audit.gnl.gnl_hu:.1f} HU\n"
+            f"In-Vivo $f_{{50}}$ = {vct.in_vivo_audit.in_vivo_ttf.f50_mm_inv:.2f} mm$^{{-1}}$  |  "
+            f"$D_w$ = {vct.in_vivo_audit.d_w_result.d_w_cm:.1f} cm"
+        ),
+        transform=ax_a.transAxes,
+        va="top",
+        ha="left",
+        fontsize=8.1,
+        color="white",
+        bbox={"boxstyle": "round,pad=0.3", "facecolor": "#111111", "alpha": 0.78, "edgecolor": "none"},
+    )
+    ax_a.set_xticks([])
+    ax_a.set_yticks([])
+    ax_a.set_title("In-Vivo Metrology & Virtual Lesion")
+    cbar = fig.colorbar(im, ax=ax_a, fraction=0.046, pad=0.03)
+    cbar.set_label("CT Number (HU)", fontsize=9.0)
+    _add_panel_label(ax_a, "a", x=-0.18, y=1.04)
+
+    # Panel b: Bowtie vertical off-centering physics penalty curve (0 to 6 cm)
+    ax_b = fig.add_subplot(gs[0, 1])
+    _style_axis(ax_b)
+    offs = np.linspace(0.0, 6.0, 61)
+    pens = [compute_bowtie_off_centering_penalty(-float(d)) for d in offs]
+    surf_p = [float(p["bowtie_surface_dose_penalty_pct"]) for p in pens]
+    waste_p = [float(p["avoidable_dose_waste_pct"]) for p in pens]
+    dp_p = [float(p["d_prime_penalty_pct"]) for p in pens]
+
+    ax_b.plot(offs, waste_p, color=OI["vermilion"], lw=2.5, label="Total Avoidable Dose Waste (%)")
+    ax_b.plot(offs, surf_p, color=OI["orange"], lw=2.2, ls="--", label="Bowtie Surface Dose Inflation (%)")
+    ax_b.plot(offs, dp_p, color=OI["blue"], lw=2.2, ls="-.", label="Peripheral $d'$ Degradation (%)")
+    cur_off = abs(vct.in_vivo_audit.off_centering.vertical_offset_cm)
+    cur_waste = vct.in_vivo_audit.off_centering.avoidable_dose_waste_pct
+    ax_b.scatter(
+        [cur_off],
+        [cur_waste],
+        color=OI["vermilion"],
+        marker="*",
+        s=170,
+        zorder=7,
+        edgecolors="#111111",
+        linewidths=0.6,
+        label=f"Audited Scan ($|\\Delta y|$={cur_off:.1f} cm: +{cur_waste:.0f}% waste)",
+    )
+    ax_b.set_xlim(0.0, 6.1)
+    ax_b.set_ylim(0.0, max(waste_p) * 1.15)
+    ax_b.set_xlabel("Vertical Table Miscentering, $|\\Delta y|$ (cm)")
+    ax_b.set_ylabel("Coupled Dose & Image-Quality Penalty (%)")
+    ax_b.set_title("Bowtie-Filter Vertical Off-Centering Pareto Penalty")
+    ax_b.legend(loc="upper left", fontsize=8.0)
+    _add_panel_label(ax_b, "b")
+
+    # Panel c: Counterfactual reduced-dose empirical CHO survival curve + 50% dose crop inset
+    ax_c = fig.add_subplot(gs[1, 0])
+    _style_axis(ax_c)
+    c_ctdi = np.array([p.ctdi_vol_mgy for p in vct.dose_curve])
+    c_dp = np.array([p.empirical_d_prime_cho for p in vct.dose_curve])
+    c_lo = np.array([p.d_prime_ci95_low for p in vct.dose_curve])
+    c_hi = np.array([p.d_prime_ci95_high for p in vct.dose_curve])
+
+    ax_c.fill_between(
+        c_ctdi, c_lo, c_hi, color=OI["blue"], alpha=0.20, label="95% Bootstrap CI (Anatomical + Quantum)"
+    )
+    ax_c.plot(
+        c_ctdi, c_dp, color=OI["blue"], lw=2.4, marker="o", ms=5.5, label="Empirical In-Vivo Spatial CHO $d'$"
+    )
+    ax_c.axhline(
+        task.d_prime_target,
+        color=OI["charcoal"],
+        ls="--",
+        lw=1.5,
+        label=f"Clinical Guardrail ($d'_{{min}}$={task.d_prime_target:.1f})",
+    )
+    ax_c.axvline(
+        vct.alara_min_ctdi_vol_mgy,
+        color=OI["green"],
+        ls="-.",
+        lw=1.7,
+        label=f"ALARA Cliff = {vct.alara_min_ctdi_vol_mgy:.1f} mGy (-{vct.max_safe_dose_reduction_pct:.0f}%)",
+    )
+    ax_c.set_xlim(2.2, 12.8)
+    ax_c.set_ylim(0.5, max(float(np.max(c_hi)) * 1.25, 4.5))
+    ax_c.set_xlabel("Counterfactual CTDI$_{vol}$ (mGy)")
+    ax_c.set_ylabel("Empirical Image-Domain CHO $d'$")
+    ax_c.set_title("Counterfactual Reduced-Dose Digital Twin Survival Curve")
+    ax_c.legend(loc="lower right", fontsize=7.9)
+
+    # Inset showing counterfactual 50%-dose zoomed liver ROI with virtual lesion
+    ax_ins = inset_axes(ax_c, width="26%", height="34%", loc="upper left", borderpad=0.9)
+    half_crop = 18
+    ly_i, lx_i = round(ly), round(lx)
+    crop_50 = hu_50pct[ly_i - half_crop : ly_i + half_crop, lx_i - half_crop : lx_i + half_crop]
+    ax_ins.imshow(crop_50, cmap="gray", vmin=-20, vmax=140)
+    ax_ins.set_title("50% Dose Twin", fontsize=7.6, pad=2.0)
+    ax_ins.set_xticks([])
+    ax_ins.set_yticks([])
+    _add_panel_label(ax_c, "c")
+
+    # Panel d: In-vivo GNL local-SD histogram on real public MIT CT_small.dcm vs abdomen
+    ax_d = fig.add_subplot(gs[1, 1])
+    _style_axis(ax_d)
+    h1_x = vct.in_vivo_audit.gnl.hist_bin_centers_hu
+    h1_y = vct.in_vivo_audit.gnl.hist_counts / max(float(np.max(vct.in_vivo_audit.gnl.hist_counts)), 1.0)
+    h2_x = pub_invivo.gnl.hist_bin_centers_hu
+    h2_y = pub_invivo.gnl.hist_counts / max(float(np.max(pub_invivo.gnl.hist_counts)), 1.0)
+
+    ax_d.fill_between(h1_x, 0.0, h1_y, color=OI["blue"], alpha=0.22)
+    ax_d.plot(
+        h1_x,
+        h1_y,
+        color=OI["blue"],
+        lw=2.2,
+        label=f"Abdomen Twin (GNL={vct.in_vivo_audit.gnl.gnl_hu:.1f} HU)",
+    )
+    ax_d.axvline(vct.in_vivo_audit.gnl.gnl_hu, color=OI["blue"], ls=":", lw=1.4)
+
+    ax_d.fill_between(h2_x, 0.0, h2_y, color=OI["green"], alpha=0.20)
+    ax_d.plot(
+        h2_x,
+        h2_y,
+        color=OI["green"],
+        lw=2.2,
+        ls="--",
+        label=f"Public MIT CT_small.dcm (GNL={pub_invivo.gnl.gnl_hu:.1f} HU)",
+    )
+    ax_d.axvline(pub_invivo.gnl.gnl_hu, color=OI["green"], ls=":", lw=1.4)
+    ax_d.set_xlabel("Local Soft-Tissue Standard Deviation (HU)")
+    ax_d.set_ylabel("Normalized Histogram Density")
+    ax_d.set_title("Automated In-Vivo Global Noise Level (Christianson Mode)")
+    ax_d.legend(loc="upper right", fontsize=8.2)
+    _add_panel_label(ax_d, "d")
+
+    _add_provenance_footer(
+        fig,
+        vct.provenance.output_sha256[:12],
+        "v0.3.0 In-Vivo Digital Twin  |  Christianson 2015, Sanders 2016, Habibzadeh 2012, Marsh 2017",
+    )
+    _save_fig(fig, "fig9_invivo_digital_twin_offcentering")
+    return {
+        "in_vivo_gnl_hu": vct.in_vivo_audit.gnl.gnl_hu,
+        "in_vivo_f50_mm_inv": vct.in_vivo_audit.in_vivo_ttf.f50_mm_inv,
+        "vertical_offset_cm": vct.in_vivo_audit.off_centering.vertical_offset_cm,
+        "avoidable_dose_waste_pct": vct.in_vivo_audit.off_centering.avoidable_dose_waste_pct,
+        "alara_min_ctdi_vol_mgy": vct.alara_min_ctdi_vol_mgy,
+        "max_safe_dose_reduction_pct": vct.max_safe_dose_reduction_pct,
+        "public_mit_ct_gnl_hu": pub_invivo.gnl.gnl_hu,
+    }
+
+
+def generate_fig10_cross_vendor_compiler() -> dict[str, Any]:
+    """Fig 10: Cross-Vendor Equi-Detectability Protocol Compiler (Siemens -> GE / Philips / Canon)."""
+    profiles = get_standard_vendor_scanner_profiles()
+    src_siemens = CTProtocolSpec(
+        protocol_id="SIEMENS_ABD_REF",
+        scanner_name=profiles[CTVendor.SIEMENS].scanner_name,
+        vendor=CTVendor.SIEMENS,
+        kvp=100.0,
+        ref_mas=165.0,
+        recon_mode=ReconMode.HYBRID_IR,
+        ir_strength=0.60,
+        pitch=0.80,
+        rotation_time_s=0.5,
+        slice_thickness_mm=3.0,
+        hardware_limits=profiles[CTVendor.SIEMENS].hardware_limits,
+    )
+    task = ClinicalTaskSpec(
+        name="5mm_low_contrast_liver_lesion",
+        diameter_mm=5.0,
+        contrast_hu=22.0,
+        material_type="soft_tissue",
+    )
+    d_w_grid = [20.0, 24.0, 28.0, 32.0, 36.0]
+
+    # Model realistic mixed-generation hospital fleet capabilities across target vendors:
+    # GE Apex (DLIR TrueFidelity), Philips Incisive (IMR/iDose4), Canon Aquilion (AIDR 3D Hybrid IR)
+    from dataclasses import replace
+
+    fleet_profiles = {
+        CTVendor.GE: profiles[CTVendor.GE],
+        CTVendor.PHILIPS: replace(
+            profiles[CTVendor.PHILIPS],
+            supported_recon_modes=[ReconMode.FBP, ReconMode.HYBRID_IR, ReconMode.MODEL_BASED_IR],
+        ),
+        CTVendor.CANON: replace(
+            profiles[CTVendor.CANON],
+            supported_recon_modes=[ReconMode.FBP, ReconMode.HYBRID_IR],
+        ),
+    }
+
+    compiled_map = {}
+    for tgt_v in (CTVendor.GE, CTVendor.PHILIPS, CTVendor.CANON):
+        compiled_map[tgt_v] = compile_cross_vendor_protocol(
+            source_protocol=src_siemens,
+            target_profile=fleet_profiles[tgt_v],
+            task=task,
+            habitus_d_w_grid_cm=d_w_grid,
+        )
+
+    # Save QMP migration diff sheet (Siemens -> GE) into results/
+    RES_DIR.mkdir(parents=True, exist_ok=True)
+    (RES_DIR / "migration_siemens_to_ge.md").write_text(
+        render_migration_diff_markdown(compiled_map[CTVendor.GE]), encoding="utf-8"
+    )
+    (RES_DIR / "migration_siemens_to_ge.csv").write_text(
+        render_migration_diff_csv(compiled_map[CTVendor.GE]), encoding="utf-8"
+    )
+
+    fig = plt.figure(figsize=(14.4, 5.9))
+    gs = GridSpec(1, 2, figure=fig, wspace=0.25, left=0.068, right=0.97, top=0.88, bottom=0.15)
+
+    # Panel a: Equi-detectability d'(D_w) matching curves across all 4 vendors
+    ax_a = fig.add_subplot(gs[0, 0])
+    _style_axis(ax_a)
+    src_rows = compiled_map[CTVendor.GE].habitus_table
+    ax_a.plot(
+        d_w_grid,
+        [r.source_d_prime for r in src_rows],
+        color=OI["charcoal"],
+        lw=2.8,
+        marker="o",
+        ms=6.5,
+        label="Source: Siemens Force (100 kVp, QRM 165, ADMIRE 3)",
+        zorder=6,
+    )
+    vendor_styles = [
+        (CTVendor.GE, OI["blue"], "--", "s", "GE Apex"),
+        (CTVendor.PHILIPS, OI["green"], "-.", "^", "Philips Incisive"),
+        (CTVendor.CANON, OI["vermilion"], ":", "D", "Canon Aquilion ONE"),
+    ]
+    for v_enum, col, ls, mk, short in vendor_styles:
+        cm = compiled_map[v_enum]
+        tk = cm.target_native_knobs
+        ax_a.plot(
+            d_w_grid,
+            [r.compiled_d_prime for r in cm.habitus_table],
+            color=col,
+            lw=2.1,
+            ls=ls,
+            marker=mk,
+            ms=5.0,
+            label=(
+                f"Compiled {short}: {tk.kvp:.0f} kVp, "
+                f"{tk.primary_exposure_knob_value}, {tk.recon_algorithm_name}"
+            ),
+        )
+
+    ax_a.set_xlabel("Patient Water-Equivalent Diameter, $D_w$ (cm)")
+    ax_a.set_ylabel("Task Detectability Index, $d'_{NPWE}$")
+    ax_a.set_title("Cross-Vendor Equi-Detectability Matching Across Habitus")
+    ax_a.legend(loc="upper right", fontsize=7.8)
+    _add_panel_label(ax_a, "a")
+
+    # Panel b: Habitus-stratified SSDE comparison across compiled vendors
+    ax_b = fig.add_subplot(gs[0, 1])
+    _style_axis(ax_b)
+    x_idx = np.arange(len(d_w_grid))
+    bw = 0.20
+    ax_b.bar(
+        x_idx - 1.5 * bw,
+        [r.source_ssde_mgy for r in src_rows],
+        width=bw,
+        color=OI["charcoal"],
+        alpha=0.85,
+        label="Source Siemens Force (Hybrid IR)",
+    )
+    for shift, (v_enum, col, _, _, short) in zip((-0.5, 0.5, 1.5), vendor_styles, strict=True):
+        cm = compiled_map[v_enum]
+        ax_b.bar(
+            x_idx + shift * bw,
+            [r.compiled_ssde_mgy for r in cm.habitus_table],
+            width=bw,
+            color=col,
+            alpha=0.88,
+            label=f"{short} ({cm.mean_ssde_delta_pct:+.1f}% mean SSDE)",
+        )
+    ax_b.set_xticks(x_idx)
+    ax_b.set_xticklabels([f"{int(d)} cm" for d in d_w_grid])
+    ax_b.set_xlabel("Patient Habitus Water-Equivalent Diameter, $D_w$")
+    ax_b.set_ylabel("Size-Specific Dose Estimate, SSDE (mGy)")
+    ax_b.set_title("Compiled Target-Vendor SSDE at Matched $d'(D_w)$")
+    ax_b.legend(loc="upper left", fontsize=8.0)
+    _add_panel_label(ax_b, "b")
+
+    _add_provenance_footer(
+        fig,
+        compiled_map[CTVendor.GE].provenance.output_sha256[:12],
+        "v0.3.0 Cross-Vendor Equi-Detectability Protocol Compiler (Siemens -> GE / Philips / Canon)",
+    )
+    _save_fig(fig, "fig10_cross_vendor_protocol_compiler")
+    return {
+        v.value: {
+            "target_knob": cm.target_native_knobs.primary_exposure_knob_value,
+            "target_recon": (
+                f"{cm.target_native_knobs.recon_algorithm_name} "
+                f"({cm.target_native_knobs.recon_strength_setting})"
+            ),
+            "mean_ssde_delta_pct": round(cm.mean_ssde_delta_pct, 2),
+            "all_habitus_matched": cm.all_habitus_matched,
+        }
+        for v, cm in compiled_map.items()
+    }
+
+
 def main() -> None:
     _configure_matplotlib()
     RES_DIR.mkdir(parents=True, exist_ok=True)
@@ -1905,10 +2323,12 @@ def main() -> None:
         "fig6_validation": generate_fig6_validation_calibration(),
         "fig7_multitask_vmi_calibration": generate_fig7_multitask_vmi_calibration(),
         "fig8_qa_cusum_multiprocedure_psd": generate_fig8_qa_cusum_and_multiprocedure_psd(),
+        "fig9_invivo_digital_twin": generate_fig9_invivo_digital_twin_and_offcentering(),
+        "fig10_cross_vendor_compiler": generate_fig10_cross_vendor_compiler(),
     }
     out_json = RES_DIR / "benchmark_summary.json"
     out_json.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print(f"Generated all 8 figures in {FIG_DIR} and benchmark summary in {out_json}")
+    print(f"Generated all 10 figures in {FIG_DIR} and benchmark summary in {out_json}")
 
 
 if __name__ == "__main__":

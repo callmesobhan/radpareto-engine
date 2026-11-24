@@ -1,9 +1,9 @@
 {
-  "engine_version": "0.2.0",
-  "audit_timestamp_utc": "2026-11-22T11:40:01.284530+00:00",
+  "engine_version": "0.3.0",
+  "audit_timestamp_utc": "2026-11-24T20:18:48.683615+00:00",
   "all_passed": true,
-  "passed_count": 14,
-  "total_checks": 14,
+  "passed_count": 18,
+  "total_checks": 18,
   "checks": [
     {
       "check": "public_mit_dicom_integrity",
@@ -86,11 +86,11 @@
       "evidence": {
         "critic_approved": "6/6",
         "mean_ctdi_reduction_pct": 41.48,
-        "mcp_tool_count": 8
+        "mcp_tool_count": 10
       }
     },
     {
-      "check": "all_eight_publication_figures_present",
+      "check": "all_ten_publication_figures_present",
       "passed": true,
       "evidence": {
         "figure_stems": [
@@ -101,7 +101,9 @@
           "fig5_sobol_uncertainty_phase",
           "fig6_cohort_validation_calibration",
           "fig7_multitask_vmi_calibration",
-          "fig8_qa_cusum_multiprocedure_psd"
+          "fig8_qa_cusum_multiprocedure_psd",
+          "fig9_invivo_digital_twin_offcentering",
+          "fig10_cross_vendor_protocol_compiler"
         ]
       }
     },
@@ -135,6 +137,53 @@
       "evidence": {
         "qa_drift_detected": true,
         "cumulative_head_psd_gy": 2.331
+      }
+    },
+    {
+      "check": "invivo_metrology_and_bowtie_offcentering",
+      "passed": true,
+      "evidence": {
+        "abdomen_gnl_hu": 12.43,
+        "abdomen_offset_cm": -3.49,
+        "avoidable_dose_waste_pct": 51.9,
+        "public_ct_gnl_hu": 24.05
+      }
+    },
+    {
+      "check": "counterfactual_dose_digital_twin_cho",
+      "passed": true,
+      "evidence": {
+        "d_prime_100pct": 5.268,
+        "d_prime_25pct": 2.514,
+        "alara_min_ctdi_vol_mgy": 3.0
+      }
+    },
+    {
+      "check": "cross_vendor_equi_detectability_compiler",
+      "passed": true,
+      "evidence": {
+        "ge": {
+          "knob": "NI 25.7",
+          "mean_ssde_delta_pct": -41.33
+        },
+        "philips": {
+          "knob": "DRI 5 (~39 mAs)",
+          "mean_ssde_delta_pct": -41.33
+        },
+        "canon": {
+          "knob": "SD 24.3",
+          "mean_ssde_delta_pct": -41.33
+        }
+      }
+    },
+    {
+      "check": "cross_vendor_migration_diff_artifacts",
+      "passed": true,
+      "evidence": {
+        "artifacts": [
+          "results/migration_siemens_to_ge.md",
+          "results/migration_siemens_to_ge.csv"
+        ]
       }
     }
   ]

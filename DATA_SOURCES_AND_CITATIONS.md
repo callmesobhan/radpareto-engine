@@ -50,6 +50,14 @@
    - Saltelli A, Annoni P, Azzini I, Campolongo F, Ratto M, Tarantola S. *Variance based sensitivity analysis of model output. Design and estimator for the total sensitivity index.* **Computer Physics Communications**. 2010;181(2):259–270. DOI: [`10.1016/j.cpc.2009.09.018`](https://doi.org/10.1016/j.cpc.2009.09.018).
    - Jansen MJW. *Analysis of variance designs for model output.* **Computer Physics Communications**. 1999;117(1–2):35–43. DOI: [`10.1016/S0010-4655(98)00154-4`](https://doi.org/10.1016/S0010-4655(98)00154-4).
 
+8. **In-Vivo Clinical CT Global Noise Level (GNL) & Air–Skin Resolution (TTF):**
+   - Christianson O, Winslow J, Frush DP, Samei E. *Automated Technique to Measure Noise in Clinical CT Examinations.* **AJR Am J Roentgenol**. 2015;205(1):W93–W99. DOI: [`10.2214/AJR.14.13613`](https://doi.org/10.2214/AJR.14.13613).
+   - Sanders J, Hurwitz L, Samei E. *Patient-specific quantification of image quality: An automated method for measuring spatial resolution in clinical CT images.* **Medical Physics**. 2016;43(10):5330–5338. DOI: [`10.1118/1.4961984`](https://doi.org/10.1118/1.4961984).
+
+9. **CT Bowtie-Filter Vertical Off-Centering & Patient Positioning Dosimetry:**
+   - Habibzadeh MA, Ay MR, Asl ARK, Ghadiri H, Zaidi H. *Impact of miscentering on patient dose and image noise in x-ray CT imaging: phantom and clinical studies.* **Physica Medica**. 2012;28(3):191–199. DOI: [`10.1016/j.ejmp.2011.06.002`](https://doi.org/10.1016/j.ejmp.2011.06.002).
+   - Marsh RM, Silosky M. *The effects of patient positioning when interpreting CT dose metrics: A phantom study.* **Medical Physics**. 2017;44(5):1916–1925. DOI: [`10.1002/mp.12137`](https://doi.org/10.1002/mp.12137).
+
 ---
 
 ## 3. BibTeX Bibliography
@@ -149,5 +157,49 @@
   pages   = {35--43},
   year    = {1999},
   doi     = {10.1016/S0010-4655(98)00154-4}
+}
+
+@article{christianson2015automated,
+  title   = {Automated Technique to Measure Noise in Clinical {CT} Examinations},
+  author  = {Christianson, Olav and Winslow, James and Frush, Donald P. and Samei, Ehsan},
+  journal = {AJR American Journal of Roentgenology},
+  volume  = {205},
+  number  = {1},
+  pages   = {W93--W99},
+  year    = {2015},
+  doi     = {10.2214/AJR.14.13613}
+}
+
+@article{sanders2016patient,
+  title   = {Patient-specific quantification of image quality: An automated method for measuring spatial resolution in clinical {CT} images},
+  author  = {Sanders, Jeremiah and Hurwitz, Lynne and Samei, Ehsan},
+  journal = {Medical Physics},
+  volume  = {43},
+  number  = {10},
+  pages   = {5330--5338},
+  year    = {2016},
+  doi     = {10.1118/1.4961984}
+}
+
+@article{habibzadeh2012impact,
+  title   = {Impact of miscentering on patient dose and image noise in x-ray {CT} imaging: phantom and clinical studies},
+  author  = {Habibzadeh, M. A. and Ay, M. R. and Asl, A. R. K. and Ghadiri, H. and Zaidi, H.},
+  journal = {Physica Medica},
+  volume  = {28},
+  number  = {3},
+  pages   = {191--199},
+  year    = {2012},
+  doi     = {10.1016/j.ejmp.2011.06.002}
+}
+
+@article{marsh2017effects,
+  title   = {The effects of patient positioning when interpreting {CT} dose metrics: A phantom study},
+  author  = {Marsh, Rebecca M. and Silosky, Michael},
+  journal = {Medical Physics},
+  volume  = {44},
+  number  = {5},
+  pages   = {1916--1925},
+  year    = {2017},
+  doi     = {10.1002/mp.12137}
 }
 ```

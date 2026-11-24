@@ -23,8 +23,8 @@
 | `GE-HEAD-LEGACY` | GE Revolution EVO | `SUBOPTIMAL_SPECTRUM` | 17.5 | 47.83 | 14.37 | -70.0% | 4.44 | 3.50 (3.5) | 80 kVp / standard / deep_learning_recon (0.75) | **APPROVED** |
 
 ## Provenance & Standards
-- **Engine Version:** `0.2.0`
-- **Timestamp (UTC):** `2026-11-22T11:36:15.359000+00:00`
+- **Engine Version:** `0.3.0`
+- **Timestamp (UTC):** `2026-11-24T20:14:58.926593+00:00`
 - **Input SHA-256:** `63b568541fece8205c5e4ef26769e73b6603e735c00732ab2080745ae8d164d8`
 - **Output SHA-256:** `36ed9928771942d7deb717267fd42ced1b0b91b5b2e02f6060ba430b6b605afb`
 - **Standards Referenced:**

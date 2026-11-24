@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from radpareto_engine import __version__
+from radpareto_engine.counterfactual_vct import run_counterfactual_dose_digital_twin
 from radpareto_engine.dicom_io import read_ct_dicom, read_rdsr_dicom, write_rdsr_dicom
 from radpareto_engine.dosimetry_rdsr import (
     compute_cumulative_multiprocedure_psd,
@@ -25,11 +26,16 @@ from radpareto_engine.dosimetry_rdsr import (
 from radpareto_engine.harness.agent_orchestrator import audit_and_optimize_protocol_fleet
 from radpareto_engine.harness.mcp_server import MCPServer
 from radpareto_engine.harness.qa_drift_tracker import simulate_longitudinal_qa_benchmark
+from radpareto_engine.in_vivo_metrology import (
+    audit_in_vivo_ct_slice,
+    generate_anatomical_abdomen_ct,
+)
 from radpareto_engine.ir import (
     AbstentionCode,
     AbstentionError,
     ClinicalTaskSpec,
     CTProtocolSpec,
+    CTVendor,
     FluoroIrradiationEvent,
     MultiProcedureSession,
     ReconMode,
@@ -41,6 +47,10 @@ from radpareto_engine.pareto_optimizer import (
     solve_multitask_pareto_frontier,
     solve_pareto_frontier,
     sweep_vmi_energy_curve,
+)
+from radpareto_engine.protocol_compiler import (
+    compile_cross_vendor_protocol,
+    get_standard_vendor_scanner_profiles,
 )
 from radpareto_engine.provenance import (
     assert_parseval_invariant,
@@ -270,14 +280,14 @@ def run_audit() -> dict[str, Any]:
         {"n_events": len(rdsr_events), "calibration_verified": rdsr_prov.calibration_verified},
     )
 
-    # 9. Autonomous fleet audit & Critic-Verifier Gate + MCP conformance (8 tools)
+    # 9. Autonomous fleet audit & Critic-Verifier Gate + MCP conformance (10 tools)
     dossier = audit_and_optimize_protocol_fleet()
     mcp = MCPServer()
     tools_resp = mcp.handle_request({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     n_tools = len(tools_resp["result"]["tools"]) if tools_resp else 0
     record(
         "fleet_critic_gate_and_mcp_server",
-        dossier.critic_approved_count == dossier.total_protocols and n_tools == 8,
+        dossier.critic_approved_count == dossier.total_protocols and n_tools == 10,
         {
             "critic_approved": f"{dossier.critic_approved_count}/{dossier.total_protocols}",
             "mean_ctdi_reduction_pct": round(dossier.fleet_mean_ctdi_reduction_pct, 2),
@@ -285,7 +295,7 @@ def run_audit() -> dict[str, Any]:
         },
     )
 
-    # 10. All 8 publication PNG + PDF figures present
+    # 10. All 10 publication PNG + PDF figures present
     expected_figs = [
         "fig1_tg233_phantom_metrology",
         "fig2_dose_detectability_pareto",
@@ -295,13 +305,15 @@ def run_audit() -> dict[str, Any]:
         "fig6_cohort_validation_calibration",
         "fig7_multitask_vmi_calibration",
         "fig8_qa_cusum_multiprocedure_psd",
+        "fig9_invivo_digital_twin_offcentering",
+        "fig10_cross_vendor_protocol_compiler",
     ]
     figs_ok = all(
         (REPO_ROOT / "figures" / f"{stem}.png").is_file()
         and (REPO_ROOT / "figures" / f"{stem}.pdf").is_file()
         for stem in expected_figs
     )
-    record("all_eight_publication_figures_present", figs_ok, {"figure_stems": expected_figs})
+    record("all_ten_publication_figures_present", figs_ok, {"figure_stems": expected_figs})
 
     # 11. True 3D Volumetric NPS Parseval conservation
     nps_3d = measure_nps_3d_volumetric(vol, spec.pixel_spacing_mm, 1.0, spec.background_roi_centers_px)
@@ -390,6 +402,89 @@ def run_audit() -> dict[str, Any]:
             "qa_drift_detected": qa_rep.any_drift_detected,
             "cumulative_head_psd_gy": round(cum_psd.cumulative_psd_gy, 3),
         },
+    )
+
+    # 15. In-vivo GNL, Air-Skin TTF & Bowtie Off-Centering on Anatomical CT + Real Public DICOM
+    abd_hu, abd_meta = generate_anatomical_abdomen_ct(
+        size_px=192, vertical_offset_cm=-3.5, noise_std_hu=12.0, seed=42
+    )
+    iv_abd = audit_in_vivo_ct_slice(abd_hu, abd_meta["pixel_spacing_mm"])
+    iv_pub = audit_in_vivo_ct_slice(parsed_ct.hu_array, parsed_ct.pixel_spacing_mm)
+    record(
+        "invivo_metrology_and_bowtie_offcentering",
+        abs(iv_abd.off_centering.vertical_offset_cm - (-3.5)) < 0.4
+        and iv_abd.off_centering.avoidable_dose_waste_pct > 25.0
+        and iv_pub.gnl.gnl_hu > 2.0,
+        {
+            "abdomen_gnl_hu": round(iv_abd.gnl.gnl_hu, 2),
+            "abdomen_offset_cm": round(iv_abd.off_centering.vertical_offset_cm, 2),
+            "avoidable_dose_waste_pct": round(iv_abd.off_centering.avoidable_dose_waste_pct, 1),
+            "public_ct_gnl_hu": round(iv_pub.gnl.gnl_hu, 2),
+        },
+    )
+
+    # 16. Counterfactual Correlated Low-Dose Virtual-Lesion Digital Twin
+    vct_res = run_counterfactual_dose_digital_twin(
+        hu_slice=abd_hu,
+        pixel_spacing_mm=abd_meta["pixel_spacing_mm"],
+        baseline_ctdi_vol_mgy=12.0,
+        task=ClinicalTaskSpec(name="6mm_liver", diameter_mm=6.0, contrast_hu=-32.0, d_prime_target=2.4),
+        lesion_center_px=abd_meta["liver_center_px"],
+        dose_fractions=[1.0, 0.55, 0.25],
+        n_realizations=24,
+        seed=42,
+    )
+    record(
+        "counterfactual_dose_digital_twin_cho",
+        vct_res.dose_curve[0].empirical_d_prime_cho > vct_res.dose_curve[-1].empirical_d_prime_cho * 1.25
+        and 0.25 <= vct_res.alara_min_dose_fraction <= 1.0,
+        {
+            "d_prime_100pct": round(vct_res.dose_curve[0].empirical_d_prime_cho, 3),
+            "d_prime_25pct": round(vct_res.dose_curve[-1].empirical_d_prime_cho, 3),
+            "alara_min_ctdi_vol_mgy": round(vct_res.alara_min_ctdi_vol_mgy, 2),
+        },
+    )
+
+    # 17. Cross-Vendor Equi-Detectability Protocol Compiler (Siemens -> GE, Philips, Canon)
+    profs = get_standard_vendor_scanner_profiles()
+    src_s = CTProtocolSpec(
+        protocol_id="AUD_SIEMENS",
+        scanner_name=profs[CTVendor.SIEMENS].scanner_name,
+        vendor=CTVendor.SIEMENS,
+        kvp=100.0,
+        ref_mas=165.0,
+        recon_mode=ReconMode.HYBRID_IR,
+        ir_strength=0.60,
+        hardware_limits=profs[CTVendor.SIEMENS].hardware_limits,
+    )
+    comp_results = {
+        v.value: compile_cross_vendor_protocol(
+            source_protocol=src_s,
+            target_profile=profs[v],
+            task=ClinicalTaskSpec(name="5mm_liver", diameter_mm=5.0, contrast_hu=22.0),
+        )
+        for v in (CTVendor.GE, CTVendor.PHILIPS, CTVendor.CANON)
+    }
+    record(
+        "cross_vendor_equi_detectability_compiler",
+        all(c.all_habitus_matched for c in comp_results.values()),
+        {
+            k: {
+                "knob": c.target_native_knobs.primary_exposure_knob_value,
+                "mean_ssde_delta_pct": round(c.mean_ssde_delta_pct, 2),
+            }
+            for k, c in comp_results.items()
+        },
+    )
+
+    # 18. Migration Diff Artifacts Present
+    mig_ok = (REPO_ROOT / "results" / "migration_siemens_to_ge.md").is_file() and (
+        REPO_ROOT / "results" / "migration_siemens_to_ge.csv"
+    ).is_file()
+    record(
+        "cross_vendor_migration_diff_artifacts",
+        mig_ok,
+        {"artifacts": ["results/migration_siemens_to_ge.md", "results/migration_siemens_to_ge.csv"]},
     )
 
     report = {

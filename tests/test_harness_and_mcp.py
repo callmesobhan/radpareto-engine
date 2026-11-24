@@ -72,11 +72,11 @@ def test_mcp_jsonrpc_lifecycle_and_all_six_tools() -> None:
     ping_resp = server.handle_request({"jsonrpc": "2.0", "id": 2, "method": "ping"})
     assert ping_resp is not None and ping_resp["result"] == {}
 
-    # List tools (8 tools in v0.2.0)
+    # List tools (10 tools in v0.3.0)
     list_resp = server.handle_request({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})
     assert list_resp is not None
     tool_names = [t["name"] for t in list_resp["result"]["tools"]]
-    assert len(tool_names) == 8
+    assert len(tool_names) == 10
     assert set(tool_names) == {
         "radpareto_measure_tg233",
         "radpareto_compute_ssde_and_psd",
@@ -86,6 +86,8 @@ def test_mcp_jsonrpc_lifecycle_and_all_six_tools() -> None:
         "radpareto_run_sobol_sensitivity",
         "radpareto_solve_multitask_pareto",
         "radpareto_analyze_dicom_file",
+        "radpareto_run_invivo_dose_digital_twin",
+        "radpareto_compile_vendor_protocol",
     }
 
     # Call each tool cleanly
@@ -123,6 +125,14 @@ def test_mcp_jsonrpc_lifecycle_and_all_six_tools() -> None:
         ("radpareto_solve_multitask_pareto", {"d_w_cm": 29.0, "include_vmi_sweep": True}),
         ("radpareto_analyze_dicom_file", {"file_path": pub_ct, "modality": "ct"}),
         ("radpareto_analyze_dicom_file", {"file_path": bench_rdsr, "modality": "rdsr"}),
+        (
+            "radpareto_run_invivo_dose_digital_twin",
+            {"baseline_ctdi_vol_mgy": 12.0, "n_realizations": 16},
+        ),
+        (
+            "radpareto_compile_vendor_protocol",
+            {"source_vendor": "siemens", "target_vendor": "ge"},
+        ),
     ]
     for idx, (name, args) in enumerate(calls, start=10):
         resp = server.handle_request(

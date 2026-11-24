@@ -1,5 +1,5 @@
 {
-  "engine_version": "0.2.0",
+  "engine_version": "0.3.0",
   "fig1_tg233_metrology": {
     "ttf_fbp_f50": 0.48103349668332374,
     "ttf_mbir_hi_f50": 0.4216964729843205,
@@ -127,12 +127,12 @@
       "output_mean": 4.151420375416997,
       "output_std": 1.7598729419050214,
       "provenance": {
-        "schema_version": "1.1.0",
-        "engine_version": "0.2.0",
+        "schema_version": "1.2.0",
+        "engine_version": "0.3.0",
         "artifact_kind": "sobol_uq",
         "input_sha256": "f334ce81039cd1b6d5802150e9770eb5c40e656f786d96873e9db28d5e993bf6",
         "output_sha256": "fd95648226e1459b8ecf51d871a270b846e7c7c975b864f021690afe68038d85",
-        "timestamp_utc": "2026-11-22T11:36:16.491858+00:00",
+        "timestamp_utc": "2026-11-24T20:15:00.020961+00:00",
         "standards_referenced": [
           "Saltelli et al., Comput Phys Commun 2010;181(2):259-270 (DOI:10.1016/j.cpc.2009.09.018)",
           "Jansen, Comput Phys Commun 1999;117(1-2):35-43 (DOI:10.1016/S0010-4655(98)00154-4)"
@@ -221,12 +221,12 @@
       "output_mean": 2674.2866727067294,
       "output_std": 656.9231127762896,
       "provenance": {
-        "schema_version": "1.1.0",
-        "engine_version": "0.2.0",
+        "schema_version": "1.2.0",
+        "engine_version": "0.3.0",
         "artifact_kind": "sobol_uq",
         "input_sha256": "a595574c98442dd53754d5ba24b618966d63c96d33f677914169a269be431b37",
         "output_sha256": "b1a9032f4f8f5629b53b6afc1deedc2db781afb31b67aa4d43cad28e8c1f7cf4",
-        "timestamp_utc": "2026-11-22T11:36:16.682322+00:00",
+        "timestamp_utc": "2026-11-24T20:15:00.213229+00:00",
         "standards_referenced": [
           "Saltelli et al., Comput Phys Commun 2010;181(2):259-270 (DOI:10.1016/j.cpc.2009.09.018)",
           "Jansen, Comput Phys Commun 1999;117(1-2):35-43 (DOI:10.1016/S0010-4655(98)00154-4)"
@@ -257,5 +257,34 @@
     "multiprocedure_final_psd_gy": 15.794987511304457,
     "multiprocedure_bio_psd_gy": 12.717535287181793,
     "atcm_dlp_savings_pct": 44.814595857318885
+  },
+  "fig9_invivo_digital_twin": {
+    "in_vivo_gnl_hu": 12.83383326414715,
+    "in_vivo_f50_mm_inv": 0.13570765069635005,
+    "vertical_offset_cm": -3.8002493207607495,
+    "avoidable_dose_waste_pct": 58.85954593786822,
+    "alara_min_ctdi_vol_mgy": 3.0688836285589742,
+    "max_safe_dose_reduction_pct": 74.42596976200855,
+    "public_mit_ct_gnl_hu": 24.05381549050626
+  },
+  "fig10_cross_vendor_compiler": {
+    "ge": {
+      "target_knob": "NI 25.7",
+      "target_recon": "TrueFidelity DLIR (High)",
+      "mean_ssde_delta_pct": -41.33,
+      "all_habitus_matched": true
+    },
+    "philips": {
+      "target_knob": "DRI 5 (~39 mAs)",
+      "target_recon": "Precise Image (Smoother)",
+      "mean_ssde_delta_pct": -41.33,
+      "all_habitus_matched": true
+    },
+    "canon": {
+      "target_knob": "SD 24.3",
+      "target_recon": "AiCE Body (Strong)",
+      "mean_ssde_delta_pct": -41.33,
+      "all_habitus_matched": true
+    }
   }
 }

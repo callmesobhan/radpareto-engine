@@ -1,6 +1,6 @@
 """Zero-bloat JSON-RPC 2.0 stdio Model Context Protocol (MCP) server for radpareto-engine.
 
-Exposes 8 typed, provenance-gated medical physics tools:
+Exposes 10 typed, provenance-gated medical physics tools:
 1. radpareto_measure_tg233
 2. radpareto_compute_ssde_and_psd
 3. radpareto_solve_pareto_frontier
@@ -9,6 +9,8 @@ Exposes 8 typed, provenance-gated medical physics tools:
 6. radpareto_run_sobol_sensitivity
 7. radpareto_solve_multitask_pareto
 8. radpareto_analyze_dicom_file
+9. radpareto_run_invivo_dose_digital_twin
+10. radpareto_compile_vendor_protocol
 """
 
 from __future__ import annotations
@@ -19,16 +21,19 @@ from pathlib import Path
 from typing import Any
 
 from radpareto_engine import __version__
+from radpareto_engine.counterfactual_vct import run_counterfactual_dose_digital_twin
 from radpareto_engine.dicom_io import read_ct_dicom, read_rdsr_dicom
 from radpareto_engine.dosimetry_rdsr import (
     compute_fluoro_3d_psd,
     compute_ssde_and_organ_doses,
 )
 from radpareto_engine.harness.agent_orchestrator import audit_and_optimize_protocol_fleet
+from radpareto_engine.in_vivo_metrology import generate_anatomical_abdomen_ct
 from radpareto_engine.ir import (
     AbstentionError,
     ClinicalTaskSpec,
     CTProtocolSpec,
+    CTVendor,
     FluoroIrradiationEvent,
     ReconMode,
     TubeHardwareLimits,
@@ -38,6 +43,11 @@ from radpareto_engine.pareto_optimizer import (
     solve_multitask_pareto_frontier,
     solve_pareto_frontier,
     sweep_vmi_energy_curve,
+)
+from radpareto_engine.protocol_compiler import (
+    compile_cross_vendor_protocol,
+    compiled_protocol_to_dict,
+    get_standard_vendor_scanner_profiles,
 )
 from radpareto_engine.sobol_sensitivity import (
     run_ct_detectability_sobol,
@@ -231,6 +241,57 @@ def get_tool_definitions() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "name": "radpareto_run_invivo_dose_digital_twin",
+            "description": (
+                "Run phantom-free in-vivo CT metrology (Global Noise Level, air-skin TTF, bowtie "
+                "vertical off-centering penalty) + correlated low-dose virtual-lesion CHO digital twin."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "dicom_path": {
+                        "type": "string",
+                        "description": (
+                            "Optional local CT DICOM path; uses anatomical benchmark if omitted."
+                        ),
+                    },
+                    "baseline_ctdi_vol_mgy": {"type": "number", "default": 12.0},
+                    "vertical_offset_cm": {"type": "number", "default": -3.5},
+                    "task_diameter_mm": {"type": "number", "default": 5.0},
+                    "task_contrast_hu": {"type": "number", "default": 35.0},
+                    "d_prime_target": {"type": "number", "default": 2.5},
+                    "n_realizations": {"type": "integer", "default": 24},
+                },
+            },
+        },
+        {
+            "name": "radpareto_compile_vendor_protocol",
+            "description": (
+                "Cross-Vendor Equi-Detectability Protocol Compiler: translate a CT protocol from "
+                "one vendor (Siemens/GE/Philips/Canon) to another matching d'(D_w) across habitus."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "source_vendor": {
+                        "type": "string",
+                        "enum": ["siemens", "ge", "philips", "canon"],
+                        "default": "siemens",
+                    },
+                    "target_vendor": {
+                        "type": "string",
+                        "enum": ["siemens", "ge", "philips", "canon"],
+                        "default": "ge",
+                    },
+                    "source_kvp": {"type": "number", "default": 100.0},
+                    "source_ref_mas": {"type": "number", "default": 165.0},
+                    "source_ir_strength": {"type": "number", "default": 0.6},
+                    "task_diameter_mm": {"type": "number", "default": 5.0},
+                    "task_contrast_hu": {"type": "number", "default": 22.0},
+                },
+            },
+        },
     ]
 
 
@@ -247,6 +308,8 @@ class MCPServer:
             "radpareto_run_sobol_sensitivity": self._tool_run_sobol_sensitivity,
             "radpareto_solve_multitask_pareto": self._tool_solve_multitask_pareto,
             "radpareto_analyze_dicom_file": self._tool_analyze_dicom_file,
+            "radpareto_run_invivo_dose_digital_twin": self._tool_run_invivo_dose_digital_twin,
+            "radpareto_compile_vendor_protocol": self._tool_compile_vendor_protocol,
         }
 
     def _tool_measure_tg233(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -524,6 +587,85 @@ class MCPServer:
             "d_eff_cm": parsed.d_w_result.d_eff_cm if parsed.d_w_result else None,
             "provenance": parsed.provenance.model_dump(),
         }
+
+    def _tool_run_invivo_dose_digital_twin(self, args: dict[str, Any]) -> dict[str, Any]:
+        dcm = args.get("dicom_path")
+        lesion_center: tuple[float, float] | None = None
+        if dcm:
+            parsed = read_ct_dicom(Path(str(dcm)).expanduser().resolve(), compute_dw=True)
+            hu_slice = parsed.hu_array
+            dx = float(parsed.pixel_spacing_mm[0])
+            source_label = str(dcm)
+        else:
+            hu_slice, meta = generate_anatomical_abdomen_ct(
+                size_px=192,
+                vertical_offset_cm=float(args.get("vertical_offset_cm", -3.5)),
+            )
+            dx = float(meta["pixel_spacing_mm"])
+            lesion_center = meta["liver_center_px"]
+            source_label = "derived_anatomical_abdomen_benchmark"
+
+        task = ClinicalTaskSpec(
+            name="in_vivo_virtual_lesion",
+            diameter_mm=float(args.get("task_diameter_mm", 5.0)),
+            contrast_hu=float(args.get("task_contrast_hu", 35.0)),
+            d_prime_target=float(args.get("d_prime_target", 2.5)),
+        )
+        res = run_counterfactual_dose_digital_twin(
+            hu_slice=hu_slice,
+            pixel_spacing_mm=dx,
+            baseline_ctdi_vol_mgy=float(args.get("baseline_ctdi_vol_mgy", 12.0)),
+            task=task,
+            lesion_center_px=lesion_center,
+            n_realizations=int(args.get("n_realizations", 24)),
+            source_label=source_label,
+        )
+        return {
+            "d_w_cm": res.in_vivo_audit.d_w_result.d_w_cm,
+            "gnl_hu": res.in_vivo_audit.gnl.gnl_hu,
+            "in_vivo_f50_mm_inv": res.in_vivo_audit.in_vivo_ttf.f50_mm_inv,
+            "vertical_offset_cm": res.in_vivo_audit.off_centering.vertical_offset_cm,
+            "bowtie_surface_dose_penalty_pct": (
+                res.in_vivo_audit.off_centering.bowtie_surface_dose_penalty_pct
+            ),
+            "avoidable_dose_waste_pct": res.in_vivo_audit.off_centering.avoidable_dose_waste_pct,
+            "alara_min_dose_fraction": res.alara_min_dose_fraction,
+            "alara_min_ctdi_vol_mgy": res.alara_min_ctdi_vol_mgy,
+            "max_safe_dose_reduction_pct": res.max_safe_dose_reduction_pct,
+            "dose_curve": [p.__dict__ for p in res.dose_curve],
+            "provenance": res.provenance.model_dump(),
+        }
+
+    def _tool_compile_vendor_protocol(self, args: dict[str, Any]) -> dict[str, Any]:
+        profiles = get_standard_vendor_scanner_profiles()
+        src_vendor = CTVendor(str(args.get("source_vendor", "siemens")))
+        tgt_vendor = CTVendor(str(args.get("target_vendor", "ge")))
+        src_prof = profiles[src_vendor]
+        tgt_prof = profiles[tgt_vendor]
+
+        src_proto = CTProtocolSpec(
+            protocol_id=f"SRC_{src_vendor.value.upper()}_ABD",
+            scanner_name=src_prof.scanner_name,
+            vendor=src_vendor,
+            kvp=float(args.get("source_kvp", 100.0)),
+            ref_mas=float(args.get("source_ref_mas", 165.0)),
+            recon_mode=ReconMode.HYBRID_IR,
+            ir_strength=float(args.get("source_ir_strength", 0.6)),
+            pitch=src_prof.default_pitch,
+            rotation_time_s=src_prof.default_rotation_time_s,
+            hardware_limits=src_prof.hardware_limits,
+        )
+        task = ClinicalTaskSpec(
+            name="5mm_low_contrast_liver_lesion",
+            diameter_mm=float(args.get("task_diameter_mm", 5.0)),
+            contrast_hu=float(args.get("task_contrast_hu", 22.0)),
+        )
+        compiled = compile_cross_vendor_protocol(
+            source_protocol=src_proto,
+            target_profile=tgt_prof,
+            task=task,
+        )
+        return compiled_protocol_to_dict(compiled)
 
     def handle_request(self, request: dict[str, Any]) -> dict[str, Any] | None:
         """Process a single JSON-RPC 2.0 MCP message and return response dict (or None)."""

@@ -42,8 +42,8 @@ class ProvenanceRecord(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str = Field(default="1.1.0")
-    engine_version: str = Field(default="0.2.0")
+    schema_version: str = Field(default="1.2.0")
+    engine_version: str = Field(default="0.3.0")
     artifact_kind: Literal[
         "observed_dicom",
         "phantom_metrology",
@@ -53,6 +53,9 @@ class ProvenanceRecord(BaseModel):
         "sobol_uq",
         "scanner_calibration",
         "qa_drift_audit",
+        "in_vivo_metrology",
+        "counterfactual_vct",
+        "protocol_compilation",
     ]
     input_sha256: str = Field(min_length=64, max_length=64)
     output_sha256: str = Field(min_length=64, max_length=64)
