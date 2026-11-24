@@ -7,7 +7,7 @@ name = "radpareto-engine"
 version = "0.3.0"
 description = "Closed-loop AAPM TG-233 Task-Based Image Quality x Organ & Peak-Skin-Dose Pareto Protocol Optimization Engine with Frontier Agent Harness and MCP Server"
 readme = "README.md"
-license = "Apache-2.0"
+license = "LicenseRef-RadPareto-NonCommercial-Research-1.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11"
 authors = [
@@ -28,7 +28,7 @@ keywords = [
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: Apache Software License",
+  "License :: Other/Proprietary License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",

@@ -1,10 +1,10 @@
 cff-version: 1.2.0
 title: "radpareto-engine: Closed-Loop AAPM TG-233 Task-Based Image Quality x Organ & Peak-Skin-Dose Pareto Protocol Optimization Engine"
-message: "If you use this software in research or benchmarks, please cite it using the metadata below."
+message: "Citation is MANDATORY for any non-commercial research, publication, or derivative work using this software (see LICENSE)."
 type: software
 authors:
   - name: "RadPareto Engine Contributors"
-license: Apache-2.0
+license-url: "https://github.com/callmesobhan/radpareto-engine/blob/main/LICENSE"
 version: "0.3.0"
 date-released: "2026-11-24"
 keywords:
