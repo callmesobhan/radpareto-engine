@@ -63,14 +63,17 @@ MCP_PROTOCOL_VERSION = "2024-11-05"
 
 
 def get_tool_definitions() -> list[dict[str, Any]]:
-    """Return MCP JSON-Schema tool definitions for all 6 radpareto-engine tools."""
+    """Return MCP JSON-Schema tool definitions for all 10 radpareto-engine tools."""
     return [
         {
             "name": "radpareto_measure_tg233",
-            "description": (
-                "Run AAPM TG-233 circular-edge TTF, 2D/3D Parseval-verified NPS, and NPWE/CHO "
-                "detectability index d' on a calibrated phantom scan."
-            ),
+            "description": "Run AAPM TG-233 circular-edge TTF, 2D/3D Parseval-verified NPS, and NPWE/CHO detectability index d' on a calibrated phantom scan.",  # noqa: E501
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -91,10 +94,13 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "name": "radpareto_compute_ssde_and_psd",
-            "description": (
-                "Compute AAPM TG-204/220/293 CT SSDE & organ dose surrogates and/or 3D patient-"
-                "surface fluoroscopy Peak Skin Dose (PSD) from calibrated RDSR events."
-            ),
+            "description": "Compute AAPM TG-204/220/293 CT SSDE & organ dose surrogates and/or 3D patient-surface fluoroscopy Peak Skin Dose (PSD) from calibrated RDSR events.",  # noqa: E501
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -118,10 +124,13 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "name": "radpareto_solve_pareto_frontier",
-            "description": (
-                "Solve hardware-constrained CT Dose-Detectability (d') Pareto frontier across "
-                "kVp, filtration, and reconstruction strength for patient habitus D_w."
-            ),
+            "description": "Solve hardware-constrained CT Dose-Detectability (d') Pareto frontier across kVp, filtration, and reconstruction strength for patient habitus D_w.",  # noqa: E501
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -141,10 +150,13 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "name": "radpareto_invert_min_dose_for_dprime",
-            "description": (
-                "Exact inverse solve: find minimum CTDIvol and SSDE required to guarantee "
-                "d' >= d'_target within X-ray tube hardware limits."
-            ),
+            "description": "Exact inverse solve: find minimum CTDIvol and SSDE required to guarantee d' >= d'_target within X-ray tube hardware limits.",  # noqa: E501
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -165,10 +177,13 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "name": "radpareto_audit_protocol_fleet",
-            "description": (
-                "Run autonomous multi-vendor CT fleet drift audit, counterfactual Pareto "
-                "optimization, and independent Critic-Verifier Gate."
-            ),
+            "description": "Run autonomous multi-vendor CT fleet drift audit, counterfactual Pareto optimization, and independent Critic-Verifier Gate.",  # noqa: E501
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -178,10 +193,13 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "name": "radpareto_run_sobol_sensitivity",
-            "description": (
-                "Run Saltelli-Jansen QMC global Sobol' sensitivity analysis (S_1, S_T, interactions) "
-                "for CT detectability d' or fluoroscopy Peak Skin Dose."
-            ),
+            "description": "Run Saltelli-Jansen QMC global Sobol' sensitivity analysis (S_1, S_T, interactions) for CT detectability d' or fluoroscopy Peak Skin Dose.",  # noqa: E501
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -197,10 +215,13 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "name": "radpareto_solve_multitask_pareto",
-            "description": (
-                "Solve joint multi-task CT Pareto frontier across simultaneous clinical tasks "
-                "(e.g. liver lesion + iodinated vessel) with optional PCCT/DECT VMI keV sweep."
-            ),
+            "description": "Solve joint multi-task CT Pareto frontier across simultaneous clinical tasks (e.g. liver lesion + iodinated vessel) with optional PCCT/DECT VMI keV sweep.",  # noqa: E501
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -213,10 +234,13 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "name": "radpareto_analyze_dicom_file",
-            "description": (
-                "Ingest a real local CT Image DICOM (.dcm) for AAPM TG-220 D_w / SSDE or a "
-                "DICOM RDSR (.dcm) for calibrated 3D fluoroscopy Peak Skin Dose with SHA-256 provenance."
-            ),
+            "description": "Ingest a real local CT Image DICOM (.dcm) for AAPM TG-220 D_w / SSDE or a DICOM RDSR (.dcm) for calibrated 3D fluoroscopy Peak Skin Dose with SHA-256 provenance.",  # noqa: E501
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
             "inputSchema": {
                 "type": "object",
                 "required": ["file_path"],
@@ -243,18 +267,19 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "name": "radpareto_run_invivo_dose_digital_twin",
-            "description": (
-                "Run phantom-free in-vivo CT metrology (Global Noise Level, air-skin TTF, bowtie "
-                "vertical off-centering penalty) + correlated low-dose virtual-lesion CHO digital twin."
-            ),
+            "description": "Run phantom-free in-vivo CT metrology (Global Noise Level, air-skin TTF, bowtie vertical off-centering penalty) + correlated low-dose virtual-lesion CHO digital twin.",  # noqa: E501
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "dicom_path": {
                         "type": "string",
-                        "description": (
-                            "Optional local CT DICOM path; uses anatomical benchmark if omitted."
-                        ),
+                        "description": "Optional local CT DICOM path; uses anatomical benchmark if omitted.",
                     },
                     "baseline_ctdi_vol_mgy": {"type": "number", "default": 12.0},
                     "vertical_offset_cm": {"type": "number", "default": -3.5},
@@ -267,10 +292,13 @@ def get_tool_definitions() -> list[dict[str, Any]]:
         },
         {
             "name": "radpareto_compile_vendor_protocol",
-            "description": (
-                "Cross-Vendor Equi-Detectability Protocol Compiler: translate a CT protocol from "
-                "one vendor (Siemens/GE/Philips/Canon) to another matching d'(D_w) across habitus."
-            ),
+            "description": "Cross-Vendor Equi-Detectability Protocol Compiler: translate a CT protocol from one vendor (Siemens/GE/Philips/Canon) to another matching d'(D_w) across habitus.",  # noqa: E501
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": True,
+                "openWorldHint": False,
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {

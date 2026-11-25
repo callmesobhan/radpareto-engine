@@ -75,7 +75,8 @@ def test_mcp_jsonrpc_lifecycle_and_all_six_tools() -> None:
     # List tools (10 tools in v0.3.0)
     list_resp = server.handle_request({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})
     assert list_resp is not None
-    tool_names = [t["name"] for t in list_resp["result"]["tools"]]
+    tools = list_resp["result"]["tools"]
+    tool_names = [t["name"] for t in tools]
     assert len(tool_names) == 10
     assert set(tool_names) == {
         "radpareto_measure_tg233",
@@ -89,6 +90,14 @@ def test_mcp_jsonrpc_lifecycle_and_all_six_tools() -> None:
         "radpareto_run_invivo_dose_digital_twin",
         "radpareto_compile_vendor_protocol",
     }
+    for tool in tools:
+        assert isinstance(tool["description"], str) and len(tool["description"]) > 20
+        assert tool["annotations"] == {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        }
 
     # Call each tool cleanly
     repo_root = Path(__file__).resolve().parents[1]
