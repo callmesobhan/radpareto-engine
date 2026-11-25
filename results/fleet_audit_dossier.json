@@ -11,7 +11,7 @@
     "artifact_kind": "fleet_audit",
     "input_sha256": "63b568541fece8205c5e4ef26769e73b6603e735c00732ab2080745ae8d164d8",
     "output_sha256": "36ed9928771942d7deb717267fd42ced1b0b91b5b2e02f6060ba430b6b605afb",
-    "timestamp_utc": "2026-11-24T20:14:58.926593+00:00",
+    "timestamp_utc": "2026-11-25T05:12:41.409471+00:00",
     "standards_referenced": [
       "AAPM TG-233 (Samei et al., Med Phys 2019;46(11):e735-e756, DOI:10.1002/mp.13763)",
       "AAPM Report No. 204 (2011), Report No. 220 (2014), & Report No. 293 (2019): SSDE",

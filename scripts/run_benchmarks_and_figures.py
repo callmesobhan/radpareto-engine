@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate all 6 publication-grade 300-DPI PNG + PDF figures and benchmark dossiers.
+"""Generate all 10 Swiss RSNA Radiology Precision Blueprint PNG + PDF figures and dossiers.
 
 Outputs:
 - figures/fig1_tg233_phantom_metrology.{png,pdf}
@@ -8,6 +8,10 @@ Outputs:
 - figures/fig4_fleet_protocol_drift_audit.{png,pdf}
 - figures/fig5_sobol_uncertainty_phase.{png,pdf}
 - figures/fig6_cohort_validation_calibration.{png,pdf}
+- figures/fig7_multitask_vmi_calibration.{png,pdf}
+- figures/fig8_qa_cusum_multiprocedure_psd.{png,pdf}
+- figures/fig9_invivo_digital_twin_offcentering.{png,pdf}
+- figures/fig10_cross_vendor_protocol_compiler.{png,pdf}
 - results/fleet_audit_dossier.md
 - results/fleet_audit_dossier.json
 - results/benchmark_summary.json
@@ -94,16 +98,21 @@ FIG_DIR = REPO_ROOT / "figures"
 RES_DIR = REPO_ROOT / "results"
 PUBLIC_CT_PATH = REPO_ROOT / "data" / "public_ct_sample" / "CT_small.dcm"
 
-# Okabe-Ito colorblind-safe palette
+# Swiss RSNA Radiology Precision Blueprint palette (colorblind-safe)
+BLUEPRINT_BG = "#F2F6FB"
+BLUEPRINT_AX = "#FFFFFF"
+BLUEPRINT_NAVY = "#173B63"
+BLUEPRINT_COBALT = "#0F4C81"
+
 OI = {
-    "blue": "#0072B2",
-    "vermilion": "#D55E00",
-    "green": "#009E73",
-    "orange": "#E69F00",
-    "sky": "#56B4E9",
-    "purple": "#CC79A7",
-    "charcoal": "#222222",
-    "gray": "#6E6E6E",
+    "blue": "#0F4C81",      # Deep RSNA Cobalt
+    "vermilion": "#C83E37", # Brick Coral (Alert / Bariatric / Sentinel)
+    "green": "#008B9E",     # Nordic Teal-Cyan (Optimal / Pediatric / DLR)
+    "orange": "#D97706",    # Signal Amber (Caution / Hybrid IR)
+    "sky": "#2CA8C9",       # Arctic Cyan
+    "purple": "#4C3F91",    # Royal Slate-Indigo
+    "charcoal": "#173B63",  # Midnight Cobalt
+    "gray": "#5B7083",      # Cool Blueprint Steel
 }
 
 
@@ -113,17 +122,27 @@ def _configure_matplotlib() -> None:
         {
             "font.family": "sans-serif",
             "font.sans-serif": ["DejaVu Sans", "Arial", "Helvetica"],
-            "font.size": 10.0,
-            "axes.titlesize": 11.2,
+            "font.size": 9.8,
+            "text.color": "#102A43",
+            "axes.titlesize": 11.0,
             "axes.titleweight": "bold",
-            "axes.labelsize": 10.2,
-            "axes.linewidth": 0.9,
-            "xtick.labelsize": 9.2,
-            "ytick.labelsize": 9.2,
-            "legend.fontsize": 8.8,
+            "axes.titlecolor": "#102A43",
+            "axes.labelsize": 10.0,
+            "axes.labelcolor": "#102A43",
+            "axes.edgecolor": BLUEPRINT_NAVY,
+            "axes.linewidth": 1.0,
+            "axes.facecolor": BLUEPRINT_AX,
+            "xtick.color": BLUEPRINT_NAVY,
+            "ytick.color": BLUEPRINT_NAVY,
+            "xtick.labelsize": 9.0,
+            "ytick.labelsize": 9.0,
+            "legend.fontsize": 8.6,
             "legend.frameon": True,
-            "legend.framealpha": 0.92,
-            "legend.edgecolor": "#CCCCCC",
+            "legend.framealpha": 0.94,
+            "legend.facecolor": "#F8FBFE",
+            "legend.edgecolor": "#B8CCE0",
+            "figure.facecolor": BLUEPRINT_BG,
+            "savefig.facecolor": BLUEPRINT_BG,
             "savefig.dpi": 300,
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
@@ -132,44 +151,70 @@ def _configure_matplotlib() -> None:
 
 
 def _style_axis(ax: plt.Axes) -> None:
+    ax.set_facecolor(BLUEPRINT_AX)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.grid(True, linestyle="--", linewidth=0.55, alpha=0.30, color="#888888")
+    ax.spines["left"].set_color(BLUEPRINT_NAVY)
+    ax.spines["bottom"].set_color(BLUEPRINT_NAVY)
+    ax.spines["left"].set_linewidth(1.05)
+    ax.spines["bottom"].set_linewidth(1.05)
+    ax.minorticks_on()
+    ax.grid(True, which="major", linestyle="-", linewidth=0.65, alpha=0.75, color="#D3DFEC")
+    ax.grid(True, which="minor", linestyle=":", linewidth=0.42, alpha=0.65, color="#E7EFF7")
 
 
 def _add_panel_label(ax: plt.Axes, label: str, x: float = -0.10, y: float = 1.05) -> None:
     text_fn = ax.text2D if hasattr(ax, "text2D") else ax.text
+    tag = f"[{label.upper()}]"
     text_fn(
         x,
         y,
-        label,
+        tag,
         transform=ax.transAxes,
-        fontsize=13.5,
+        fontsize=10.5,
+        fontfamily="monospace",
         fontweight="bold",
-        color="#111111",
+        color="#FFFFFF",
         va="bottom",
         ha="left",
+        bbox={
+            "boxstyle": "square,pad=0.22",
+            "facecolor": BLUEPRINT_COBALT,
+            "edgecolor": BLUEPRINT_NAVY,
+            "linewidth": 0.8,
+        },
     )
 
 
 def _add_provenance_footer(fig: plt.Figure, sha_short: str, standard: str) -> None:
+    # Crisp Swiss RSNA cobalt blueprint top rule
+    bar = patches.Rectangle(
+        (0.0, 0.990),
+        1.0,
+        0.010,
+        transform=fig.transFigure,
+        facecolor=BLUEPRINT_COBALT,
+        edgecolor="none",
+        zorder=20,
+    )
+    fig.add_artist(bar)
     fig.text(
         0.5,
         0.012,
-        f"radpareto-engine v{__version__}  |  Research Software — NOT A MEDICAL DEVICE  |  "
-        f"{standard}  |  SHA-256: {sha_short}",
+        f"RADPARETO-ENGINE v{__version__}  //  {standard}  //  SHA-256:{sha_short}  //  "
+        "RESEARCH SOFTWARE — NOT A MEDICAL DEVICE",
         ha="center",
         va="bottom",
-        fontsize=8.0,
-        color="#555555",
-        style="italic",
+        fontsize=7.6,
+        fontfamily="monospace",
+        color="#3B5570",
     )
 
 
 def _save_fig(fig: plt.Figure, stem: str) -> None:
     FIG_DIR.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIG_DIR / f"{stem}.png", dpi=300)
-    fig.savefig(FIG_DIR / f"{stem}.pdf")
+    fig.savefig(FIG_DIR / f"{stem}.png", dpi=300, facecolor=BLUEPRINT_BG)
+    fig.savefig(FIG_DIR / f"{stem}.pdf", facecolor=BLUEPRINT_BG)
     plt.close(fig)
 
 

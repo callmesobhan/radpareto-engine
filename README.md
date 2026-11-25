@@ -2,13 +2,13 @@
 
 **Closed-Loop AAPM TG-233 Task-Based Image Quality × Organ & Peak-Skin-Dose Pareto Protocol Optimization Engine with Frontier Agent Harness & MCP Server**
 
-[![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-0072B2?style=flat-square)](https://www.python.org/)
-[![License: Non-Commercial Research & Personal Use](https://img.shields.io/badge/license-Non--Commercial%20Research%20(Citation%20Required)%20%7C%20Personal%20Use-CC79A7?style=flat-square)](LICENSE)
-[![Research Software](https://img.shields.io/badge/status-Research%20Software%20%E2%80%94%20NOT%20A%20MEDICAL%20DEVICE-D55E00?style=flat-square)](NOTICE)
-[![Standards: AAPM TG-233 / TG-204 / TG-220 / TG-293](https://img.shields.io/badge/standards-AAPM%20TG--233%20%7C%20TG--204%2F220%2F293%20%7C%20NCRP%20168%20%7C%20ICRP%20120-56B4E9?style=flat-square)](DATA_SOURCES_AND_CITATIONS.md)
-[![MCP: JSON-RPC 2.0](https://img.shields.io/badge/MCP-10%20Typed%20Tools%20(stdio)-E69F00?style=flat-square)](src/radpareto_engine/harness/mcp_server.py)
-[![Audit: 18/18 Pass](https://img.shields.io/badge/independent%20audit-18%2F18%20PASS-009E73?style=flat-square)](docs/AUDIT_REPORT.md)
-[![Version: v0.3.0](https://img.shields.io/badge/version-v0.3.0-0072B2?style=flat-square)](pyproject.toml)
+[![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-0F4C81?style=flat-square&labelColor=173B63)](https://www.python.org/)
+[![License: Non-Commercial Research & Personal Use](https://img.shields.io/badge/license-Non--Commercial%20Research%20(Citation%20Required)%20%7C%20Personal%20Use-3B5B7E?style=flat-square&labelColor=173B63)](LICENSE)
+[![Research Software](https://img.shields.io/badge/status-Research%20Software%20%E2%80%94%20NOT%20A%20MEDICAL%20DEVICE-C83E3B?style=flat-square&labelColor=173B63)](NOTICE)
+[![Standards: AAPM TG-233 / TG-204 / TG-220 / TG-293](https://img.shields.io/badge/standards-AAPM%20TG--233%20%7C%20TG--204%2F220%2F293%20%7C%20NCRP%20168%20%7C%20ICRP%20120-008B9E?style=flat-square&labelColor=173B63)](DATA_SOURCES_AND_CITATIONS.md)
+[![MCP: JSON-RPC 2.0](https://img.shields.io/badge/MCP-10%20Typed%20Tools%20(stdio)-D97706?style=flat-square&labelColor=173B63)](src/radpareto_engine/harness/mcp_server.py)
+[![Audit: 18/18 Pass](https://img.shields.io/badge/independent%20audit-18%2F18%20PASS-008B9E?style=flat-square&labelColor=173B63)](docs/AUDIT_REPORT.md)
+[![Version: v0.3.0](https://img.shields.io/badge/version-v0.3.0-0F4C81?style=flat-square&labelColor=173B63)](pyproject.toml)
 
 > **LICENSE & RESEARCH SOFTWARE NOTICE — NON-COMMERCIAL ONLY & NOT A MEDICAL DEVICE.** `radpareto-engine` is licensed strictly for **non-commercial academic/scientific research (with mandatory citation per [`CITATION.cff`](CITATION.cff)) and private personal use only** — **no commercial use is permitted** without a separate written license (see [`LICENSE`](LICENSE)). It has **not** been cleared or approved by the FDA, EU MDR, or any regulatory authority, and **must not** be used for clinical diagnosis, automated scanner exposure control, or unverified clinical dose reporting without Qualified Medical Physicist (QMP) commissioning.
 
